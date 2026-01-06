@@ -1,6 +1,6 @@
 {
   "name": "tea-effect",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "The Elm Architecture for TypeScript with Effect",
   "keywords": [
     "elm",

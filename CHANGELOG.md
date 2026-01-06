@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2025-01-06
+
+### Fixed
+
+- **Platform** module - Fix stale model state in update loop causing counter to always read initial value
+  - Replace polling-based `Ref` with reactive `SubscriptionRef` for proper state synchronization
+
+### Changed
+
+- **Platform** module - Refactored state management to use `SubscriptionRef`
+  - Replace `Ref` with `SubscriptionRef` for reactive state (similar to RxJS BehaviorSubject)
+  - Simplify `model$` stream to use `SubscriptionRef.changes` directly
+  - Remove polling-based subscription loop in favor of push-based reactivity
+  - Change `Effect.runFork` to `Effect.runSync` in dispatch function
+- **React** module - Improved hook implementation
+  - Use `dispatchRef` pattern instead of `useMemo` for dispatch stability
+  - Simplify setup effect using `Effect.scoped` wrapper
+
+[0.1.1]: https://github.com/savkelita/tea-effect/compare/v0.1.0...v0.1.1
+
 ## [0.1.0] - 2024-01-06
 
 ### Added
