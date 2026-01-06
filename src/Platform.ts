@@ -6,7 +6,7 @@
  *
  * @since 0.1.0
  */
-import { Effect, Stream, Ref, Queue, Option, Fiber, pipe, Scope } from 'effect'
+import { Effect, Stream, SubscriptionRef, Queue, Option, Fiber, pipe, Scope } from 'effect'
 import { Cmd } from './Cmd'
 import { Sub, none as subNone } from './Sub'
 
@@ -57,6 +57,9 @@ export interface Program<Model, Msg, E = never, R = never> {
 /**
  * Creates a new Program.
  *
+ * Uses SubscriptionRef for reactive state management - equivalent to RxJS BehaviorSubject.
+ * The model$ stream emits the current value on subscription and all subsequent changes.
+ *
  * @param init - Initial model and command
  * @param update - Function that handles messages and returns new model + commands
  * @param subscriptions - Function that returns subscriptions based on current model
@@ -88,14 +91,16 @@ export const program = <Model, Msg, E = never, R = never>(
   Effect.gen(function* () {
     const [initialModel, initialCmd] = init
 
-    // State management
-    const modelRef = yield* Ref.make(initialModel)
+    // State management using SubscriptionRef (like RxJS BehaviorSubject)
+    // - Holds current value
+    // - changes stream emits current value on subscription + all changes
+    const modelRef = yield* SubscriptionRef.make(initialModel)
     const msgQueue = yield* Queue.unbounded<Msg>()
-    const shutdownRef = yield* Ref.make(false)
+    const shutdownRef = yield* SubscriptionRef.make(false)
 
-    // Dispatch function
+    // Dispatch function - adds message to queue
     const dispatch: Dispatch<Msg> = (msg) => {
-      Effect.runFork(Queue.offer(msgQueue, msg))
+      Effect.runSync(Queue.offer(msgQueue, msg))
     }
 
     // Process a command
@@ -113,35 +118,28 @@ export const program = <Model, Msg, E = never, R = never>(
     // Process initial command
     yield* processCmd(initialCmd)
 
-    // Main update loop
+    // Main update loop - processes messages and updates SubscriptionRef
     const updateLoop: Effect.Effect<never, E, R> = Effect.forever(
       Effect.gen(function* () {
-        const isShutdown = yield* Ref.get(shutdownRef)
+        const isShutdown = yield* SubscriptionRef.get(shutdownRef)
         if (isShutdown) {
           return yield* Effect.interrupt
         }
 
         const msg = yield* Queue.take(msgQueue)
-        const currentModel = yield* Ref.get(modelRef)
+        const currentModel = yield* SubscriptionRef.get(modelRef)
         const [newModel, cmd] = update(msg, currentModel)
 
-        yield* Ref.set(modelRef, newModel)
+        // Update state - this automatically notifies all subscribers
+        yield* SubscriptionRef.set(modelRef, newModel)
         yield* processCmd(cmd)
       })
     )
 
-    // Subscription management
+    // Subscription management - reacts to model changes
     const subscriptionLoop: Effect.Effect<void, E, R> = pipe(
-      Stream.fromEffect(Ref.get(modelRef)),
-      Stream.concat(
-        Stream.repeatEffect(
-          pipe(
-            Effect.sleep('10 millis'), // Small delay to batch model changes
-            Effect.flatMap(() => Ref.get(modelRef))
-          )
-        )
-      ),
-      Stream.changes, // Only emit when model actually changes
+      modelRef.changes,
+      Stream.changes, // Only emit when model actually changes (reference equality)
       Stream.flatMap(model => subscriptions(model)),
       Stream.tap(msg => Queue.offer(msgQueue, msg)),
       Stream.runDrain
@@ -151,23 +149,13 @@ export const program = <Model, Msg, E = never, R = never>(
     const updateFiber = yield* Effect.forkScoped(updateLoop)
     const subFiber = yield* Effect.forkScoped(subscriptionLoop)
 
-    // Model stream
-    const model$ = pipe(
-      Stream.fromEffect(Ref.get(modelRef)),
-      Stream.concat(
-        Stream.repeatEffect(
-          pipe(
-            Effect.sleep('1 millis'),
-            Effect.flatMap(() => Ref.get(modelRef))
-          )
-        )
-      ),
-      Stream.changes
-    )
+    // Model stream - from SubscriptionRef.changes
+    // Emits current value on subscription + all subsequent changes
+    const model$: Stream.Stream<Model, E, R> = modelRef.changes as Stream.Stream<Model, E, R>
 
     // Shutdown function
     const shutdown = Effect.gen(function* () {
-      yield* Ref.set(shutdownRef, true)
+      yield* SubscriptionRef.set(shutdownRef, true)
       yield* Fiber.interrupt(updateFiber)
       yield* Fiber.interrupt(subFiber)
     })

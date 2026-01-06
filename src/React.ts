@@ -82,7 +82,7 @@ export const programWithFlags = <Flags, Model, Msg, E = never, R = never>(
  * import { createRoot } from 'react-dom/client'
  *
  * const root = createRoot(document.getElementById('app')!)
- * 
+ *
  * Effect.runPromise(
  *   React.run(myProgram, (element) => root.render(element))
  * )
@@ -174,7 +174,7 @@ export interface UseProgramResult<Model, Msg> {
  * @category hooks
  */
 export const makeUseProgram = (React: typeof ReactTypes) => {
-  const { useState, useEffect, useRef, useMemo } = React
+  const { useState, useEffect, useRef } = React
 
   return <Model, Msg, E = never, R = never>(
     init: readonly [Model, Cmd<Msg, E, R>],
@@ -186,37 +186,26 @@ export const makeUseProgram = (React: typeof ReactTypes) => {
     const [model, setModel] = useState<Model>(initialModel)
     const programRef = useRef<Platform.Program<Model, Msg, E, R> | null>(null)
     const fiberRef = useRef<Fiber.RuntimeFiber<void, E> | null>(null)
-
-    // Stable dispatch function
-    const dispatch = useMemo<Platform.Dispatch<Msg>>(
-      () => (msg: Msg) => {
-        if (programRef.current) {
-          programRef.current.dispatch(msg)
-        }
-      },
-      []
-    )
+    const dispatchRef = useRef<Platform.Dispatch<Msg>>(() => {})
 
     useEffect(() => {
       const runtime = options.runtime ?? Runtime.defaultRuntime as Runtime.Runtime<R>
 
-      const setup = Effect.gen(function* () {
-        const scope = yield* Scope.make()
-        const prog = yield* pipe(
-          Platform.program(init, update, subscriptions),
-          Effect.provide(scope as any)
-        )
-        
-        programRef.current = prog
+      const setup = Effect.scoped(
+        Effect.gen(function* () {
+          const prog = yield* Platform.program(init, update, subscriptions)
 
-        // Subscribe to model updates
-        yield* pipe(
-          prog.model$,
-          Stream.tap(newModel => Effect.sync(() => setModel(newModel))),
-          Stream.runDrain,
-          Effect.fork
-        )
-      })
+          programRef.current = prog
+          dispatchRef.current = prog.dispatch
+
+          // Subscribe to model updates from PubSub - push-based!
+          yield* pipe(
+            prog.model$,
+            Stream.tap(newModel => Effect.sync(() => setModel(newModel))),
+            Stream.runDrain
+          )
+        })
+      )
 
       const fiber = Runtime.runFork(runtime)(setup as Effect.Effect<void, E, R>)
       fiberRef.current = fiber
@@ -229,7 +218,12 @@ export const makeUseProgram = (React: typeof ReactTypes) => {
           Runtime.runFork(runtime)(Fiber.interrupt(fiberRef.current))
         }
       }
-    }, []) // Empty deps - only run once
+    }, [])
+
+    // Stable dispatch function
+    const dispatch: Platform.Dispatch<Msg> = (msg: Msg) => {
+      dispatchRef.current(msg)
+    }
 
     return { model, dispatch }
   }
