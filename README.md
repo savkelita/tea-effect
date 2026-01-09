@@ -363,6 +363,68 @@ const subscriptions = (model: Model): Sub.Sub<Msg> =>
   }));
 ```
 
+## With LocalStorage
+
+```tsx
+import { LocalStorage } from "tea-effect";
+import { Schema, Option } from "effect";
+
+// Define a schema for your stored data
+const UserSchema = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  token: Schema.String,
+});
+type User = Schema.Schema.Type<typeof UserSchema>;
+
+type Model = {
+  user: Option.Option<User>;
+};
+
+type Msg =
+  | { type: "LoadUser" }
+  | { type: "UserLoaded"; user: Option.Option<User> }
+  | { type: "SaveUser"; user: User }
+  | { type: "Logout" }
+  | { type: "UserChangedInOtherTab"; user: Option.Option<User> };
+
+// Initial load from localStorage
+const init: [Model, Cmd.Cmd<Msg>] = [
+  { user: Option.none() },
+  LocalStorage.get("user", UserSchema, (user) => ({
+    type: "UserLoaded",
+    user,
+  })),
+];
+
+const update = (msg: Msg, model: Model): [Model, Cmd.Cmd<Msg>] => {
+  switch (msg.type) {
+    case "UserLoaded":
+      return [{ ...model, user: msg.user }, Cmd.none];
+
+    case "SaveUser":
+      return [
+        { ...model, user: Option.some(msg.user) },
+        LocalStorage.set("user", UserSchema, msg.user),
+      ];
+
+    case "Logout":
+      return [{ ...model, user: Option.none() }, LocalStorage.remove("user")];
+
+    case "UserChangedInOtherTab":
+      // Another tab logged in/out - sync state
+      return [{ ...model, user: msg.user }, Cmd.none];
+  }
+};
+
+// Subscribe to cross-tab changes
+const subscriptions = (model: Model): Sub.Sub<Msg> =>
+  LocalStorage.onChange("user", UserSchema, (user) => ({
+    type: "UserChangedInOtherTab",
+    user,
+  }));
+```
+
 ## With Dependencies (Dependency Injection)
 
 ```tsx
