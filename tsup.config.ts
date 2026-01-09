@@ -10,11 +10,12 @@ export default defineConfig({
     'src/Html.ts',
     'src/React.ts',
     'src/Navigation.ts',
+    'src/Http.ts',
   ],
   format: ['cjs', 'esm'],
   dts: true,
   clean: true,
   sourcemap: true,
   treeshake: true,
-  external: ['effect', 'react'],
+  external: ['effect', 'react', '@effect/platform'],
 })
