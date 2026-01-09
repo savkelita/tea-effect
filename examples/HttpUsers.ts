@@ -90,11 +90,11 @@ const fetchUsersRequest = Http.get(
   Http.expectJson(Schema.Array(User))
 )
 
-// POST /users - Create a new user
+// POST /users - Create a new user (with Schema validation)
 const createUserRequest = (input: CreateUserInput) =>
   Http.post(
     `${BASE_URL}/users`,
-    input,
+    Http.jsonBody(CreateUserInput, input),
     Http.expectJson(User)
   )
 

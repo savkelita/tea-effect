@@ -92,6 +92,16 @@ export interface Expect<A> {
 }
 
 /**
+ * Request body with optional Schema encoder for runtime validation.
+ *
+ * @since 0.2.0
+ * @category model
+ */
+export type Body =
+  | { readonly _tag: 'EmptyBody' }
+  | { readonly _tag: 'JsonBody'; readonly value: unknown; readonly encoder: Schema.Schema<unknown, unknown> | undefined }
+
+/**
  * HTTP Request descriptor.
  * Describes what to fetch, not how to handle the result.
  *
@@ -102,7 +112,7 @@ export interface Request<A> {
   readonly method: Method
   readonly url: string
   readonly headers: ReadonlyArray<Header>
-  readonly body: unknown | undefined
+  readonly body: Body
   readonly expect: Expect<A>
   readonly timeout: number | undefined
   readonly withCredentials: boolean
@@ -190,6 +200,60 @@ export const expectString: Expect<string> = expectJson(Schema.String)
 export const expectWhatever: Expect<unknown> = expectJson(Schema.Unknown)
 
 // -------------------------------------------------------------------------------------
+// body constructors
+// -------------------------------------------------------------------------------------
+
+/**
+ * Empty body for requests that don't send data.
+ *
+ * @since 0.2.0
+ * @category body
+ */
+export const emptyBody: Body = {
+  _tag: 'EmptyBody'
+}
+
+/**
+ * JSON body with Schema encoder for runtime validation.
+ * The value is encoded/validated before sending.
+ *
+ * @example
+ * ```ts
+ * const CreateUser = Schema.Struct({ name: Schema.String, email: Schema.String })
+ * const body = Http.jsonBody(CreateUser, { name: 'John', email: 'john@example.com' })
+ * ```
+ *
+ * @since 0.2.0
+ * @category body
+ */
+export const jsonBody = <A, I>(
+  schema: Schema.Schema<A, I>,
+  value: A
+): Body => ({
+  _tag: 'JsonBody',
+  value,
+  encoder: schema as Schema.Schema<unknown, unknown>
+})
+
+/**
+ * Raw JSON body without Schema validation.
+ * Use this when you don't need runtime validation.
+ *
+ * @example
+ * ```ts
+ * const body = Http.rawBody({ name: 'John' })
+ * ```
+ *
+ * @since 0.2.0
+ * @category body
+ */
+export const rawBody = <A>(value: A): Body => ({
+  _tag: 'JsonBody',
+  value,
+  encoder: undefined
+})
+
+// -------------------------------------------------------------------------------------
 // request constructors
 // -------------------------------------------------------------------------------------
 
@@ -208,24 +272,25 @@ export const get = <A>(url: string, expect: Expect<A>): Request<A> => ({
   method: 'GET',
   url,
   headers: [],
-  body: undefined,
+  body: emptyBody,
   expect,
   timeout: undefined,
   withCredentials: false
 })
 
 /**
- * Creates a POST request.
+ * Creates a POST request with Schema-validated body.
  *
  * @example
  * ```ts
- * const createUser = Http.post('/api/users', { name: 'John' }, Http.expectJson(UserSchema))
+ * const CreateUser = Schema.Struct({ name: Schema.String })
+ * const createUser = Http.post('/api/users', Http.jsonBody(CreateUser, { name: 'John' }), Http.expectJson(UserSchema))
  * ```
  *
  * @since 0.2.0
  * @category constructors
  */
-export const post = <A>(url: string, body: unknown, expect: Expect<A>): Request<A> => ({
+export const post = <A>(url: string, body: Body, expect: Expect<A>): Request<A> => ({
   method: 'POST',
   url,
   headers: [],
@@ -236,12 +301,12 @@ export const post = <A>(url: string, body: unknown, expect: Expect<A>): Request<
 })
 
 /**
- * Creates a PUT request.
+ * Creates a PUT request with Schema-validated body.
  *
  * @since 0.2.0
  * @category constructors
  */
-export const put = <A>(url: string, body: unknown, expect: Expect<A>): Request<A> => ({
+export const put = <A>(url: string, body: Body, expect: Expect<A>): Request<A> => ({
   method: 'PUT',
   url,
   headers: [],
@@ -252,12 +317,12 @@ export const put = <A>(url: string, body: unknown, expect: Expect<A>): Request<A
 })
 
 /**
- * Creates a PATCH request.
+ * Creates a PATCH request with Schema-validated body.
  *
  * @since 0.2.0
  * @category constructors
  */
-export const patch = <A>(url: string, body: unknown, expect: Expect<A>): Request<A> => ({
+export const patch = <A>(url: string, body: Body, expect: Expect<A>): Request<A> => ({
   method: 'PATCH',
   url,
   headers: [],
@@ -277,7 +342,7 @@ export const del = <A>(url: string, expect: Expect<A>): Request<A> => ({
   method: 'DELETE',
   url,
   headers: [],
-  body: undefined,
+  body: emptyBody,
   expect,
   timeout: undefined,
   withCredentials: false
@@ -293,7 +358,7 @@ export const request = <A>(config: {
   readonly method: Method
   readonly url: string
   readonly headers?: ReadonlyArray<Header>
-  readonly body?: unknown
+  readonly body?: Body
   readonly expect: Expect<A>
   readonly timeout?: number
   readonly withCredentials?: boolean
@@ -301,7 +366,7 @@ export const request = <A>(config: {
   method: config.method,
   url: config.url,
   headers: config.headers ?? [],
-  body: config.body,
+  body: config.body ?? emptyBody,
   expect: config.expect,
   timeout: config.timeout,
   withCredentials: config.withCredentials ?? false
@@ -464,8 +529,12 @@ export const toTask = <A>(req: Request<A>): Task<A, HttpError, HttpRequirements>
     }
 
     // Add body for methods that support it
-    if (req.body !== undefined && req.method !== 'GET' && req.method !== 'HEAD') {
-      httpReq = yield* HttpClientRequest.bodyJson(httpReq, req.body)
+    if (req.body._tag === 'JsonBody' && req.method !== 'GET' && req.method !== 'HEAD') {
+      // Encode body if encoder is provided
+      const bodyValue = req.body.encoder
+        ? yield* Schema.encode(req.body.encoder)(req.body.value)
+        : req.body.value
+      httpReq = yield* HttpClientRequest.bodyJson(httpReq, bodyValue)
     }
 
     // Execute request

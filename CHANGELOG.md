@@ -12,11 +12,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Http** module - HTTP requests as Commands (Elm-style API)
   - Inspired by [Elm's Http module](https://package.elm-lang.org/packages/elm/http/latest/Http) and [gcanti's elm-ts](https://github.com/gcanti/elm-ts)
   - Uses `@effect/platform` for HTTP and `Schema` for encoding/decoding
+  - **Body constructors** (runtime validation)
+    - `jsonBody(schema, value)` - Create body with Schema validation/encoding
+    - `rawBody(value)` - Create body without validation
+    - `emptyBody` - Empty body for GET/DELETE requests
   - **Request constructors**
     - `get(url, expect)` - Create GET request
-    - `post(url, body, expect)` - Create POST request
-    - `put(url, body, expect)` - Create PUT request
-    - `patch(url, body, expect)` - Create PATCH request
+    - `post(url, body, expect)` - Create POST request with Body
+    - `put(url, body, expect)` - Create PUT request with Body
+    - `patch(url, body, expect)` - Create PATCH request with Body
     - `del(url, expect)` - Create DELETE request
     - `request(config)` - Create custom request with full control
   - **Expectations (decoders)**
@@ -53,7 +57,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Dependencies
 
-- Added optional `@effect/platform` ^0.77.0 peer dependency (required for Http module)
+- Added optional `@effect/platform` ^0.73.0 peer dependency (required for Http module)
 
 ## [0.1.1] - 2025-01-06
 

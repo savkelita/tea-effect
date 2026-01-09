@@ -116,18 +116,32 @@ type Msg =
   | { type: 'CreateUser'; name: string }
   | { type: 'UserCreated'; user: User }
 
+// Define input schema for validation
+const CreateUserInput = Schema.Struct({
+  name: Schema.String,
+  email: Schema.String
+})
+
 // Create requests (describes WHAT to fetch)
 const fetchUsersRequest = Http.get(
   '/api/users',
   Http.expectJson(Schema.Array(User))
 )
 
-const createUserRequest = (name: string) =>
+// POST with Schema-validated body
+const createUserRequest = (input: Schema.Schema.Type<typeof CreateUserInput>) =>
   Http.post(
     '/api/users',
-    { name },
+    Http.jsonBody(CreateUserInput, input),  // Validates before sending!
     Http.expectJson(User)
   )
+
+// POST without validation (raw body)
+const quickPostRequest = Http.post(
+  '/api/users',
+  Http.rawBody({ name: 'John' }),  // No validation
+  Http.expectJson(User)
+)
 
 // Add headers with pipe
 const authedRequest = pipe(
@@ -167,6 +181,25 @@ const update = (msg: Msg, model: Model): [Model, Cmd.Cmd<Msg>] => {
       return [{ ...model, users: [...model.users, msg.user] }, Cmd.none]
   }
 }
+```
+
+### Request Body
+
+tea-effect provides three ways to create request bodies:
+
+```tsx
+// 1. jsonBody - with Schema validation (recommended)
+// Validates and encodes the value before sending
+const CreateUser = Schema.Struct({ name: Schema.String, email: Schema.Email })
+Http.post('/api/users', Http.jsonBody(CreateUser, { name: 'John', email: 'john@example.com' }), Http.expectJson(User))
+
+// 2. rawBody - without validation
+// Sends the value as-is (use when you trust the data)
+Http.post('/api/users', Http.rawBody({ name: 'John' }), Http.expectJson(User))
+
+// 3. emptyBody - for requests without body (GET, DELETE)
+// This is used automatically by Http.get() and Http.del()
+Http.request({ method: 'POST', url: '/api/action', body: Http.emptyBody, expect: Http.expectWhatever })
 ```
 
 ### Http Error Handling
@@ -339,6 +372,7 @@ import { Effect, Stream } from 'effect'
 | `Sub<Msg>` (Observable) | `Sub<Msg>` (Stream) |
 | `Http.send(decoder)(req)` | `Http.send(req, { onSuccess, onError })` |
 | `Http.get(url, decoder)` | `Http.get(url, Http.expectJson(schema))` |
+| `Http.post(url, body, decoder)` | `Http.post(url, Http.jsonBody(schema, value), Http.expectJson(schema))` |
 
 ## License
 

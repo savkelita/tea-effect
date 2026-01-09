@@ -50,37 +50,78 @@ describe('Http', () => {
     })
   })
 
+  describe('body constructors', () => {
+    it('should create emptyBody', () => {
+      expect(Http.emptyBody._tag).toBe('EmptyBody')
+    })
+
+    it('should create jsonBody with schema encoder', () => {
+      const UserInput = Schema.Struct({ name: Schema.String })
+      const body = Http.jsonBody(UserInput, { name: 'John' })
+      expect(body._tag).toBe('JsonBody')
+      if (body._tag === 'JsonBody') {
+        expect(body.value).toEqual({ name: 'John' })
+        expect(body.encoder).toBeDefined()
+      }
+    })
+
+    it('should create rawBody without encoder', () => {
+      const body = Http.rawBody({ name: 'John' })
+      expect(body._tag).toBe('JsonBody')
+      if (body._tag === 'JsonBody') {
+        expect(body.value).toEqual({ name: 'John' })
+        expect(body.encoder).toBeUndefined()
+      }
+    })
+  })
+
   describe('request constructors', () => {
-    it('should create GET request', () => {
+    it('should create GET request with empty body', () => {
       const req = Http.get('/api/users', Http.expectString)
       expect(req.method).toBe('GET')
       expect(req.url).toBe('/api/users')
       expect(req.headers).toEqual([])
-      expect(req.body).toBeUndefined()
+      expect(req.body._tag).toBe('EmptyBody')
     })
 
-    it('should create POST request with body', () => {
-      const req = Http.post('/api/users', { name: 'John' }, Http.expectString)
+    it('should create POST request with jsonBody', () => {
+      const UserInput = Schema.Struct({ name: Schema.String })
+      const req = Http.post('/api/users', Http.jsonBody(UserInput, { name: 'John' }), Http.expectString)
       expect(req.method).toBe('POST')
       expect(req.url).toBe('/api/users')
-      expect(req.body).toEqual({ name: 'John' })
+      expect(req.body._tag).toBe('JsonBody')
+      if (req.body._tag === 'JsonBody') {
+        expect(req.body.value).toEqual({ name: 'John' })
+        expect(req.body.encoder).toBeDefined()
+      }
     })
 
-    it('should create PUT request', () => {
-      const req = Http.put('/api/users/1', { name: 'Jane' }, Http.expectString)
+    it('should create POST request with rawBody', () => {
+      const req = Http.post('/api/users', Http.rawBody({ name: 'John' }), Http.expectString)
+      expect(req.method).toBe('POST')
+      expect(req.body._tag).toBe('JsonBody')
+      if (req.body._tag === 'JsonBody') {
+        expect(req.body.value).toEqual({ name: 'John' })
+        expect(req.body.encoder).toBeUndefined()
+      }
+    })
+
+    it('should create PUT request with body', () => {
+      const req = Http.put('/api/users/1', Http.rawBody({ name: 'Jane' }), Http.expectString)
       expect(req.method).toBe('PUT')
-      expect(req.body).toEqual({ name: 'Jane' })
+      expect(req.body._tag).toBe('JsonBody')
     })
 
-    it('should create PATCH request', () => {
-      const req = Http.patch('/api/users/1', { name: 'Jane' }, Http.expectString)
+    it('should create PATCH request with body', () => {
+      const req = Http.patch('/api/users/1', Http.rawBody({ name: 'Jane' }), Http.expectString)
       expect(req.method).toBe('PATCH')
+      expect(req.body._tag).toBe('JsonBody')
     })
 
-    it('should create DELETE request', () => {
+    it('should create DELETE request with empty body', () => {
       const req = Http.del('/api/users/1', Http.expectString)
       expect(req.method).toBe('DELETE')
-      expect(req.body).toBeUndefined()
+      expect(req.body._tag).toBe('EmptyBody')
     })
 
     it('should create custom request', () => {
