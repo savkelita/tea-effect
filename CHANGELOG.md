@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **LocalStorage** module - Browser storage with Schema encoding
+  - `get` - Read and decode value with Schema
+  - `getRaw` - Read raw string without decoding
+  - `set` - Encode and store value with Schema
+  - `setRaw` - Store raw string without encoding
+  - `remove` - Remove item from storage
+  - `clear` - Clear all items from storage
+  - `keys` - Get all storage keys
+  - `length` - Get number of items
+  - `onChange` - Subscription for cross-tab changes with Schema decoding
+  - `onChangeRaw` - Subscription for raw string changes
+  - `onAnyChange` - Subscription for all storage changes
+  - Typed error handling: `StorageNotAvailable`, `QuotaExceeded`, `JsonParseError`, `DecodeError`, `EncodeError`
+
 ## [0.1.1] - 2025-01-06
 
 ### Fixed

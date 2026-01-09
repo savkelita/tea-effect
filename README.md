@@ -155,6 +155,68 @@ const subscriptions = (model: Model): Sub.Sub<Msg> =>
     : Sub.none
 ```
 
+## With LocalStorage
+
+```tsx
+import { LocalStorage } from 'tea-effect'
+import { Schema, Option } from 'effect'
+
+// Define a schema for your stored data
+const UserSchema = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  token: Schema.String
+})
+type User = Schema.Schema.Type<typeof UserSchema>
+
+type Model = {
+  user: Option.Option<User>
+}
+
+type Msg =
+  | { type: 'LoadUser' }
+  | { type: 'UserLoaded'; user: Option.Option<User> }
+  | { type: 'SaveUser'; user: User }
+  | { type: 'Logout' }
+  | { type: 'UserChangedInOtherTab'; user: Option.Option<User> }
+
+// Initial load from localStorage
+const init: [Model, Cmd.Cmd<Msg>] = [
+  { user: Option.none() },
+  LocalStorage.get('user', UserSchema, (user) => ({ type: 'UserLoaded', user }))
+]
+
+const update = (msg: Msg, model: Model): [Model, Cmd.Cmd<Msg>] => {
+  switch (msg.type) {
+    case 'UserLoaded':
+      return [{ ...model, user: msg.user }, Cmd.none]
+
+    case 'SaveUser':
+      return [
+        { ...model, user: Option.some(msg.user) },
+        LocalStorage.set('user', UserSchema, msg.user)
+      ]
+
+    case 'Logout':
+      return [
+        { ...model, user: Option.none() },
+        LocalStorage.remove('user')
+      ]
+
+    case 'UserChangedInOtherTab':
+      // Another tab logged in/out - sync state
+      return [{ ...model, user: msg.user }, Cmd.none]
+  }
+}
+
+// Subscribe to cross-tab changes
+const subscriptions = (model: Model): Sub.Sub<Msg> =>
+  LocalStorage.onChange('user', UserSchema, (user) => ({
+    type: 'UserChangedInOtherTab',
+    user
+  }))
+```
+
 ## With Dependencies (Dependency Injection)
 
 ```tsx
@@ -203,6 +265,7 @@ const { model, dispatch } = useProgram(init, update, subscriptions, { runtime })
 | `Platform` | Core runtime for TEA programs |
 | `Html` | Programs with view rendering |
 | `React` | React integration and hooks |
+| `LocalStorage` | Browser storage with Schema encoding |
 
 ## Migration from elm-ts
 
@@ -231,13 +294,13 @@ Track progress on [GitHub Projects](https://github.com/savkelita/tea-effect/proj
 ### v0.2.0 (in progress)
 - [ ] **Http** - HTTP requests with Schema validation ([PR #1](https://github.com/savkelita/tea-effect/pull/1))
 
-### v0.3.0 (planned)
+### v0.3.0 (in progress)
 - [ ] **Navigation** - Browser history and URL management ([PR #2](https://github.com/savkelita/tea-effect/pull/2))
+- [ ] **LocalStorage** - Browser storage with Schema encoding and cross-tab sync
 
 ### Future
 - [ ] **Time** - Intervals, delays, timestamps
 - [ ] **Random** - Random value generation as Cmd
-- [ ] **LocalStorage** - Browser storage persistence
 - [ ] **WebSocket** - Real-time communication
 - [ ] **Debug** - Time-travel debugging, action logging
 - [ ] **Browser** - Viewport, visibility, focus events
