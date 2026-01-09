@@ -378,16 +378,16 @@ import { Effect, Stream } from 'effect'
 
 Track progress on [GitHub Projects](https://github.com/savkelita/tea-effect/projects) or see open [Pull Requests](https://github.com/savkelita/tea-effect/pulls).
 
-### v0.2.0 (in progress)
-- [ ] **Http** - HTTP requests with Schema validation ([PR #1](https://github.com/savkelita/tea-effect/pull/1))
+### v0.2.0 (released)
+- [x] **Http** - HTTP requests with Schema validation
 
-### v0.3.0 (planned)
-- [ ] **Navigation** - Browser history and URL management ([PR #2](https://github.com/savkelita/tea-effect/pull/2))
+### v0.3.0 (in progress)
+- [ ] **Navigation** - Browser history and URL management
+- [ ] **LocalStorage** - Browser storage with Schema encoding and cross-tab sync
 
 ### Future
 - [ ] **Time** - Intervals, delays, timestamps
 - [ ] **Random** - Random value generation as Cmd
-- [ ] **LocalStorage** - Browser storage persistence
 - [ ] **WebSocket** - Real-time communication
 - [ ] **Debug** - Time-travel debugging, action logging
 - [ ] **Browser** - Viewport, visibility, focus events
