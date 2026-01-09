@@ -57,6 +57,11 @@
       "import": "./dist/React.mjs",
       "require": "./dist/React.js"
     },
+    "./Navigation": {
+      "types": "./dist/Navigation.d.ts",
+      "import": "./dist/Navigation.mjs",
+      "require": "./dist/Navigation.js"
+    },
     "./Http": {
       "types": "./dist/Http.d.ts",
       "import": "./dist/Http.mjs",
