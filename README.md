@@ -21,6 +21,9 @@ A spiritual successor to [elm-ts](https://github.com/gcanti/elm-ts), replacing f
 npm install tea-effect effect
 # or
 yarn add tea-effect effect
+
+# Optional: for Http module
+npm install @effect/platform
 ```
 
 ## Quick Start
@@ -78,7 +81,117 @@ function Counter() {
 }
 ```
 
-## With Side Effects (API Calls)
+## HTTP Requests (Elm-style)
+
+tea-effect provides an Elm-inspired Http module for type-safe HTTP requests with Schema validation.
+
+```bash
+# Install optional dependency for Http module
+npm install @effect/platform
+```
+
+```tsx
+import { Http } from 'tea-effect'
+import { Schema, pipe } from 'effect'
+
+// Define your schema
+const User = Schema.Struct({
+  id: Schema.Number,
+  name: Schema.String,
+  email: Schema.String
+})
+
+type User = Schema.Schema.Type<typeof User>
+
+type Model = {
+  users: User[]
+  loading: boolean
+  error: Http.HttpError | null
+}
+
+type Msg =
+  | { type: 'FetchUsers' }
+  | { type: 'UsersLoaded'; users: User[] }
+  | { type: 'UsersFailed'; error: Http.HttpError }
+  | { type: 'CreateUser'; name: string }
+  | { type: 'UserCreated'; user: User }
+
+// Create requests (describes WHAT to fetch)
+const fetchUsersRequest = Http.get(
+  '/api/users',
+  Http.expectJson(Schema.Array(User))
+)
+
+const createUserRequest = (name: string) =>
+  Http.post(
+    '/api/users',
+    { name },
+    Http.expectJson(User)
+  )
+
+// Add headers with pipe
+const authedRequest = pipe(
+  fetchUsersRequest,
+  Http.withHeader('Authorization', 'Bearer token'),
+  Http.withTimeout(5000)
+)
+
+// Update function
+const update = (msg: Msg, model: Model): [Model, Cmd.Cmd<Msg>] => {
+  switch (msg.type) {
+    case 'FetchUsers':
+      return [
+        { ...model, loading: true },
+        Http.send(authedRequest, {
+          onSuccess: (users) => ({ type: 'UsersLoaded', users }),
+          onError: (error) => ({ type: 'UsersFailed', error })
+        })
+      ]
+
+    case 'UsersLoaded':
+      return [{ ...model, loading: false, users: msg.users }, Cmd.none]
+
+    case 'UsersFailed':
+      return [{ ...model, loading: false, error: msg.error }, Cmd.none]
+
+    case 'CreateUser':
+      return [
+        model,
+        Http.send(createUserRequest(msg.name), {
+          onSuccess: (user) => ({ type: 'UserCreated', user }),
+          onError: (error) => ({ type: 'UsersFailed', error })
+        })
+      ]
+
+    case 'UserCreated':
+      return [{ ...model, users: [...model.users, msg.user] }, Cmd.none]
+  }
+}
+```
+
+### Http Error Handling
+
+```tsx
+// Handle specific error types
+const renderError = (error: Http.HttpError) => {
+  switch (error._tag) {
+    case 'BadUrl':
+      return `Invalid URL: ${error.url}`
+    case 'Timeout':
+      return 'Request timed out'
+    case 'NetworkError':
+      return 'Network error - check your connection'
+    case 'BadStatus':
+      return `Server error: ${error.status}`
+    case 'BadBody':
+      return 'Failed to parse response'
+  }
+}
+```
+
+## With Side Effects (Low-level API)
+
+For more control, you can use `Task.attemptWith` directly with Effect:
 
 ```tsx
 import { Effect, pipe } from 'effect'
@@ -115,10 +228,10 @@ const update = (msg: Msg, model: Model): [Model, Cmd.Cmd<Msg>] => {
   switch (msg.type) {
     case 'FetchUsers':
       return [{ ...model, loading: true, error: null }, fetchUsersCmd]
-    
+
     case 'FetchUsersSuccess':
       return [{ ...model, loading: false, users: msg.users }, Cmd.none]
-    
+
     case 'FetchUsersError':
       return [{ ...model, loading: false, error: msg.error }, Cmd.none]
   }
@@ -200,6 +313,7 @@ const { model, dispatch } = useProgram(init, update, subscriptions, { runtime })
 | `Cmd` | Commands - descriptions of side effects |
 | `Sub` | Subscriptions - streams of external events |
 | `Task` | Tasks - side effects that produce values |
+| `Http` | HTTP requests with Schema validation (requires `@effect/platform`) |
 | `Platform` | Core runtime for TEA programs |
 | `Html` | Programs with view rendering |
 | `React` | React integration and hooks |
@@ -223,6 +337,8 @@ import { Effect, Stream } from 'effect'
 | `Task.perform(f)(task)` | `Task.perform(f)(effect)` |
 | `Task.attempt(f)(taskEither)` | `Task.attempt(f)(effect)` |
 | `Sub<Msg>` (Observable) | `Sub<Msg>` (Stream) |
+| `Http.send(decoder)(req)` | `Http.send(req, { onSuccess, onError })` |
+| `Http.get(url, decoder)` | `Http.get(url, Http.expectJson(schema))` |
 
 ## License
 

@@ -5,6 +5,56 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2025-01-09
+
+### Added
+
+- **Http** module - HTTP requests as Commands (Elm-style API)
+  - Inspired by [Elm's Http module](https://package.elm-lang.org/packages/elm/http/latest/Http) and [gcanti's elm-ts](https://github.com/gcanti/elm-ts)
+  - Uses `@effect/platform` for HTTP and `Schema` for encoding/decoding
+  - **Request constructors**
+    - `get(url, expect)` - Create GET request
+    - `post(url, body, expect)` - Create POST request
+    - `put(url, body, expect)` - Create PUT request
+    - `patch(url, body, expect)` - Create PATCH request
+    - `del(url, expect)` - Create DELETE request
+    - `request(config)` - Create custom request with full control
+  - **Expectations (decoders)**
+    - `expectJson(schema)` - Expect JSON response decoded with Schema
+    - `expectString` - Expect string response
+    - `expectWhatever` - Expect any JSON value
+  - **Request modifiers** (composable with `pipe`)
+    - `withHeader(name, value)` - Add single header
+    - `withHeaders(headers)` - Add multiple headers
+    - `withTimeout(ms)` - Set request timeout
+    - `withCredentials` - Enable cookies for cross-origin requests
+  - **Header helpers**
+    - `header(name, value)` - Create header
+    - `contentType(value)` - Content-Type header
+    - `authorization(value)` - Authorization header
+    - `bearerToken(token)` - Bearer token header
+  - **Execution**
+    - `toTask(request)` - Convert to Task (Effect) that can fail with HttpError
+    - `send(request, handlers)` - Convert to Cmd with success/error handlers
+    - `sendBy(onSuccess, onError)` - Alternative curried API for send
+  - **Error types** (similar to Elm's Http.Error)
+    - `BadUrl` - Invalid URL
+    - `Timeout` - Request timeout
+    - `NetworkError` - Network failure
+    - `BadStatus` - HTTP status >= 400
+    - `BadBody` - JSON decode error
+
+### Changed
+
+- **React** module - Added `ReactLike` interface for better compatibility
+  - `makeUseProgram` and `makeUseProgramWithLayer` now accept `ReactLike` instead of `typeof React`
+  - Allows tea-effect to work with any React-compatible library (Preact, etc.)
+  - Avoids type conflicts between different React versions
+
+### Dependencies
+
+- Added optional `@effect/platform` ^0.77.0 peer dependency (required for Http module)
+
 ## [0.1.1] - 2025-01-06
 
 ### Fixed
@@ -23,6 +73,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Use `dispatchRef` pattern instead of `useMemo` for dispatch stability
   - Simplify setup effect using `Effect.scoped` wrapper
 
+[0.2.0]: https://github.com/savkelita/tea-effect/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/savkelita/tea-effect/compare/v0.1.0...v0.1.1
 
 ## [0.1.0] - 2024-01-06

@@ -11,6 +11,23 @@ import * as Html from './Html'
 import * as Platform from './Platform'
 
 // -------------------------------------------------------------------------------------
+// React-like interface
+// -------------------------------------------------------------------------------------
+
+/**
+ * Minimal interface for React-like libraries.
+ * This allows tea-effect to work with any React version without type conflicts.
+ *
+ * @since 0.1.1
+ * @category model
+ */
+export interface ReactLike {
+  useState<S>(initialState: S | (() => S)): [S, (value: S | ((prev: S) => S)) => void]
+  useEffect(effect: () => void | (() => void), deps?: readonly unknown[]): void
+  useRef<T>(initialValue: T): { current: T }
+}
+
+// -------------------------------------------------------------------------------------
 // model
 // -------------------------------------------------------------------------------------
 
@@ -173,7 +190,7 @@ export interface UseProgramResult<Model, Msg> {
  * @since 0.1.0
  * @category hooks
  */
-export const makeUseProgram = (React: typeof ReactTypes) => {
+export const makeUseProgram = (React: ReactLike) => {
   const { useState, useEffect, useRef } = React
 
   return <Model, Msg, E = never, R = never>(
@@ -235,7 +252,7 @@ export const makeUseProgram = (React: typeof ReactTypes) => {
  * @since 0.1.0
  * @category hooks
  */
-export const makeUseProgramWithLayer = (React: typeof ReactTypes) => {
+export const makeUseProgramWithLayer = (React: ReactLike) => {
   const baseUseProgram = makeUseProgram(React)
 
   return <Model, Msg, E, R>(
