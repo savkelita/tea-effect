@@ -9,6 +9,7 @@ export default defineConfig({
     'src/Platform.ts',
     'src/Html.ts',
     'src/React.ts',
+    'src/Navigation.ts',
   ],
   format: ['cjs', 'esm'],
   dts: true,

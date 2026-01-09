@@ -56,6 +56,11 @@
       "types": "./dist/React.d.ts",
       "import": "./dist/React.mjs",
       "require": "./dist/React.js"
+    },
+    "./Navigation": {
+      "types": "./dist/Navigation.d.ts",
+      "import": "./dist/Navigation.mjs",
+      "require": "./dist/Navigation.js"
     }
   },
   "files": [
