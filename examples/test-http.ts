@@ -2,9 +2,9 @@
  * Test Http Module
  *
  * Tests the Http module with JSONPlaceholder API.
+ * Note: No HttpClient layer needed - Http.send/toTask auto-provides FetchHttpClient.
  */
 import { Effect, Stream, pipe, Schema } from 'effect'
-import * as NodeHttpClient from '@effect/platform-node/NodeHttpClient'
 import * as Platform from '../src/Platform'
 import * as Http from '../src/Http'
 import { init, update, subscriptions, renderError } from './HttpUsers'
@@ -91,16 +91,9 @@ const main = Effect.gen(function* () {
   console.log('✅ Test completed!')
 })
 
-// Provide HttpClient layer for Node.js
-const HttpClientLive = NodeHttpClient.layer
-
 // Run with scoped to manage resources
-Effect.runPromise(
-  pipe(
-    Effect.scoped(main),
-    Effect.provide(HttpClientLive)
-  )
-)
+// Note: No HttpClient layer needed - Http.send/toTask auto-provides FetchHttpClient
+Effect.runPromise(Effect.scoped(main))
   .then(() => {
     console.log('\n👋 Done')
     process.exit(0)

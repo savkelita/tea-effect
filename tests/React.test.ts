@@ -18,15 +18,11 @@ describe('React', () => {
     }
   }
 
-  const view = (model: Model): TeaReact.ReactHtml<Msg> => (dispatch) => {
-    // Return a mock React element structure
-    return {
-      type: 'div',
-      props: {
-        children: `Count: ${model.count}`,
-        onClick: () => dispatch({ type: 'Increment' })
-      }
-    } as any
+  const view = (model: Model): TeaReact.Html<Msg> => (_dispatch) => {
+    // In tests, we just return null since we don't need actual React elements
+    // The important thing is that the view function is called with the model
+    void model.count // use model to avoid unused warning
+    return null
   }
 
   const subscriptions = (_model: Model): Sub.Sub<Msg> => Sub.none
@@ -93,16 +89,16 @@ describe('React', () => {
     })
   })
 
-  describe('ReactElement type', () => {
+  describe('Dom type', () => {
     it('should allow null as ReactElement', () => {
-      const element: TeaReact.ReactElement = null
+      const element: TeaReact.Dom = null
       expect(element).toBeNull()
     })
   })
 
-  describe('ReactHtml type', () => {
+  describe('Html type', () => {
     it('should be a function that takes dispatch', () => {
-      const html: TeaReact.ReactHtml<Msg> = (dispatch) => {
+      const html: TeaReact.Html<Msg> = (dispatch) => {
         dispatch({ type: 'Increment' })
         return null
       }

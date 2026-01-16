@@ -137,10 +137,11 @@ export const program = <Model, Msg, E = never, R = never>(
     )
 
     // Subscription management - reacts to model changes
+    // Uses switch: true to cancel previous subscription when model changes
     const subscriptionLoop: Effect.Effect<void, E, R> = pipe(
       modelRef.changes,
       Stream.changes, // Only emit when model actually changes (reference equality)
-      Stream.flatMap(model => subscriptions(model)),
+      Stream.flatMap(model => subscriptions(model), { switch: true }),
       Stream.tap(msg => Queue.offer(msgQueue, msg)),
       Stream.runDrain
     )

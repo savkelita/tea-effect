@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2025-01-16
+
+### Changed
+
+- **Http** module - Auto-provide FetchHttpClient (breaking change)
+  - `HttpRequirements` is now `never` - no manual HttpClient configuration needed
+  - `toTask` and `send` automatically provide FetchHttpClient
+  - Added `toTaskRaw` for testing with mock HttpClient layers
+  - Added `sendRaw` for testing with mock HttpClient layers
+
+### Fixed
+
+- **Platform** module - Fix subscription cancellation on model change
+  - Added `{ switch: true }` to Stream.flatMap in subscription loop
+  - Previous subscriptions now properly cancel when model changes (like RxJS switchMap)
+
 ## [0.2.0] - 2025-01-09
 
 ### Added
@@ -77,6 +93,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Use `dispatchRef` pattern instead of `useMemo` for dispatch stability
   - Simplify setup effect using `Effect.scoped` wrapper
 
+[0.3.0]: https://github.com/savkelita/tea-effect/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/savkelita/tea-effect/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/savkelita/tea-effect/compare/v0.1.0...v0.1.1
 

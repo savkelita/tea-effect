@@ -52,6 +52,34 @@ export const of = <Msg>(msg: Msg): Sub<Msg> => Stream.succeed(msg)
  */
 export const fromIterable = <Msg>(msgs: Iterable<Msg>): Sub<Msg> => Stream.fromIterable(msgs)
 
+/**
+ * Creates a subscription that emits a message at regular intervals.
+ *
+ * @since 0.1.0
+ * @category constructors
+ */
+export const interval = <Msg>(ms: number, msg: Msg): Sub<Msg> =>
+  pipe(
+    Stream.repeatEffect(Effect.succeed(msg)),
+    Stream.schedule(Schedule.spaced(ms))
+  )
+
+/**
+ * Creates a subscription from a callback-based event source.
+ *
+ * @since 0.1.0
+ * @category constructors
+ */
+export const fromCallback = <Msg>(
+  register: (emit: (msg: Msg) => void) => () => void
+): Sub<Msg> =>
+  Stream.async<Msg>((emit) => {
+    const cleanup = register((msg) => {
+      emit.single(msg)
+    })
+    return Effect.sync(() => cleanup())
+  })
+
 // -------------------------------------------------------------------------------------
 // combinators
 // -------------------------------------------------------------------------------------
@@ -96,31 +124,3 @@ export const filter =
   <Msg>(predicate: (msg: Msg) => boolean) =>
   <E, R>(sub: Sub<Msg, E, R>): Sub<Msg, E, R> =>
     Stream.filter(sub, predicate)
-
-/**
- * Creates a subscription that emits a message at regular intervals.
- *
- * @since 0.1.0
- * @category constructors
- */
-export const interval = <Msg>(ms: number, msg: Msg): Sub<Msg> =>
-  pipe(
-    Stream.repeatEffect(Effect.succeed(msg)),
-    Stream.schedule(Schedule.spaced(ms))
-  )
-
-/**
- * Creates a subscription from a callback-based event source.
- *
- * @since 0.1.0
- * @category constructors
- */
-export const fromCallback = <Msg>(
-  register: (emit: (msg: Msg) => void) => () => void
-): Sub<Msg> =>
-  Stream.async<Msg>((emit) => {
-    const cleanup = register((msg) => {
-      emit.single(msg)
-    })
-    return Effect.sync(() => cleanup())
-  })
