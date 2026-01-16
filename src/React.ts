@@ -7,7 +7,7 @@ import { Effect, Stream, Scope, Runtime, Fiber, pipe } from 'effect'
 import type * as ReactTypes from 'react'
 import { Cmd } from './Cmd'
 import { Sub, none as subNone } from './Sub'
-import * as Html from './Html'
+import * as HtmlModule from './Html'
 import * as Platform from './Platform'
 
 // -------------------------------------------------------------------------------------
@@ -32,20 +32,20 @@ export interface ReactLike {
 // -------------------------------------------------------------------------------------
 
 /**
- * React element type.
+ * Dom type for React elements.
  *
  * @since 0.1.0
  * @category model
  */
-export type ReactElement = ReactTypes.ReactElement | null
+export type Dom = ReactTypes.ReactElement | null
 
 /**
- * React Html type - a function that takes dispatch and returns React element.
+ * Html type for React - a function that takes dispatch and returns React element.
  *
  * @since 0.1.0
  * @category model
  */
-export type ReactHtml<Msg> = Html.Html<ReactElement, Msg>
+export type Html<Msg> = HtmlModule.Html<Dom, Msg>
 
 /**
  * React Program type.
@@ -53,7 +53,7 @@ export type ReactHtml<Msg> = Html.Html<ReactElement, Msg>
  * @since 0.1.0
  * @category model
  */
-export type Program<Model, Msg, E = never, R = never> = Html.Program<Model, Msg, ReactElement, E, R>
+export type Program<Model, Msg, E = never, R = never> = HtmlModule.Program<Model, Msg, Dom, E, R>
 
 // -------------------------------------------------------------------------------------
 // constructors
@@ -68,10 +68,10 @@ export type Program<Model, Msg, E = never, R = never> = Html.Program<Model, Msg,
 export const program = <Model, Msg, E = never, R = never>(
   init: readonly [Model, Cmd<Msg, E, R>],
   update: (msg: Msg, model: Model) => readonly [Model, Cmd<Msg, E, R>],
-  view: (model: Model) => ReactHtml<Msg>,
+  view: (model: Model) => Html<Msg>,
   subscriptions: (model: Model) => Sub<Msg, E, R> = () => subNone
 ): Effect.Effect<Program<Model, Msg, E, R>, E, R | Scope.Scope> =>
-  Html.program(init, update, view, subscriptions)
+  HtmlModule.program(init, update, view, subscriptions)
 
 /**
  * Creates a React Program with flags.
@@ -82,10 +82,10 @@ export const program = <Model, Msg, E = never, R = never>(
 export const programWithFlags = <Flags, Model, Msg, E = never, R = never>(
   init: (flags: Flags) => readonly [Model, Cmd<Msg, E, R>],
   update: (msg: Msg, model: Model) => readonly [Model, Cmd<Msg, E, R>],
-  view: (model: Model) => ReactHtml<Msg>,
+  view: (model: Model) => Html<Msg>,
   subscriptions: (model: Model) => Sub<Msg, E, R> = () => subNone
 ): ((flags: Flags) => Effect.Effect<Program<Model, Msg, E, R>, E, R | Scope.Scope>) =>
-  Html.programWithFlags(init, update, view, subscriptions)
+  HtmlModule.programWithFlags(init, update, view, subscriptions)
 
 // -------------------------------------------------------------------------------------
 // running
@@ -110,12 +110,12 @@ export const programWithFlags = <Flags, Model, Msg, E = never, R = never>(
  */
 export const run = <Model, Msg, E, R>(
   programEffect: Effect.Effect<Program<Model, Msg, E, R>, E, R | Scope.Scope>,
-  renderer: (element: ReactElement) => void
+  renderer: (element: Dom) => void
 ): Effect.Effect<void, E, R> =>
   Effect.scoped(
     Effect.gen(function* () {
       const prog = yield* programEffect
-      yield* Html.runWith<Model, Msg, ReactElement, E, R>(renderer)(prog)
+      yield* HtmlModule.runWith<Model, Msg, Dom, E, R>(renderer)(prog)
     })
   )
 
