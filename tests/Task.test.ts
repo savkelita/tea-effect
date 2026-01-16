@@ -53,13 +53,15 @@ describe('Task', () => {
   })
 
   describe('attemptWith', () => {
+    type Msg = { type: 'Success'; n: number } | { type: 'Failure'; e: string }
+
     it('should handle success with separate handlers', async () => {
       const task: Task.Task<number, string> = Task.succeed(42)
       const cmd = pipe(
         task,
-        Task.attemptWith({
-          onSuccess: (n) => ({ type: 'Success', n }),
-          onFailure: (e) => ({ type: 'Failure', e })
+        Task.attemptWith<number, string, Msg, never>({
+          onSuccess: (n): Msg => ({ type: 'Success', n }),
+          onFailure: (e): Msg => ({ type: 'Failure', e })
         })
       )
       const result = await Effect.runPromise(cmd)
@@ -70,9 +72,9 @@ describe('Task', () => {
       const task: Task.Task<number, string> = Task.fail('oops')
       const cmd = pipe(
         task,
-        Task.attemptWith({
-          onSuccess: (n) => ({ type: 'Success', n }),
-          onFailure: (e) => ({ type: 'Failure', e })
+        Task.attemptWith<number, string, Msg, never>({
+          onSuccess: (n): Msg => ({ type: 'Success', n }),
+          onFailure: (e): Msg => ({ type: 'Failure', e })
         })
       )
       const result = await Effect.runPromise(cmd)

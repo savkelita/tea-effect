@@ -1,11 +1,12 @@
 # tea-effect
 
-The Elm Architecture (TEA) for TypeScript, powered by [Effect](https://effect.website/).
+The Elm Architecture for TypeScript with [Effect](https://effect.website/).
 
 A spiritual successor to [elm-ts](https://github.com/gcanti/elm-ts), replacing fp-ts/RxJS with the Effect ecosystem.
 
 ## Why tea-effect?
 
+<<<<<<< HEAD
 | Feature              | elm-ts (fp-ts/RxJS) | tea-effect (Effect)                 |
 | -------------------- | ------------------- | ----------------------------------- |
 | Error handling       | `TaskEither<E, A>`  | `Effect<A, E, R>` with typed errors |
@@ -14,21 +15,34 @@ A spiritual successor to [elm-ts](https://github.com/gcanti/elm-ts), replacing f
 | Runtime validation   | io-ts               | @effect/schema                      |
 | Concurrency          | RxJS operators      | Structured concurrency              |
 | Resource management  | Manual              | Scope, automatic cleanup            |
+=======
+- **Type-safe side effects** - Commands and subscriptions with full type inference
+- **Elm-style HTTP** - Declarative requests with Schema validation
+- **Dependency injection** - Effect's built-in `R` (requirements) for testable code
+- **Structured concurrency** - Effect's runtime handles cancellation and resource cleanup
+- **React integration** - Ready-to-use hooks for React applications
+>>>>>>> 9f317b1eb62388c09e22fb704eaa2052ac83435a
 
 ## Installation
 
-```bash
-npm install tea-effect effect
+```sh
+npm install tea-effect effect @effect/platform
 # or
-yarn add tea-effect effect
-
-# Optional: for Http module
-npm install @effect/platform
+yarn add tea-effect effect @effect/platform
 ```
 
-## Quick Start
+Note: `effect` and `@effect/platform` are peer dependencies
+
+## Differences from elm-ts
+
+- `Effect` instead of `fp-ts` + `RxJS`
+- `@effect/schema` instead of `io-ts` for runtime validation
+- Http module with Elm-style API
+
+## React
 
 ```tsx
+<<<<<<< HEAD
 import { Cmd, Sub, Task } from "tea-effect";
 import { makeUseProgram } from "tea-effect/React";
 import * as React from "react";
@@ -47,19 +61,55 @@ type Msg = { type: "Increment" } | { type: "Decrement" } | { type: "Reset" };
 
 // Initial state
 const init: [Model, Cmd.Cmd<Msg>] = [{ count: 0, loading: false }, Cmd.none];
+=======
+import * as TeaReact from 'tea-effect/React'
+import { Effect } from 'effect'
+import { createRoot } from 'react-dom/client'
+import * as Counter from './Counter'
 
-// Update function
-const update = (msg: Msg, model: Model): [Model, Cmd.Cmd<Msg>] => {
+const root = createRoot(document.getElementById('app')!)
+
+Effect.runPromise(
+  TeaReact.run(
+    TeaReact.program(Counter.init, Counter.update, Counter.view),
+    (dom) => root.render(dom)
+  )
+)
+```
+
+## Counter Example
+
+```tsx
+// Counter.tsx
+import * as Cmd from 'tea-effect/Cmd'
+import * as TeaReact from 'tea-effect/React'
+>>>>>>> 9f317b1eb62388c09e22fb704eaa2052ac83435a
+
+export type Model = { count: number }
+
+export type Msg = { type: 'Increment' } | { type: 'Decrement' }
+
+export const init: [Model, Cmd.Cmd<Msg>] = [{ count: 0 }, Cmd.none]
+
+export const update = (msg: Msg, model: Model): [Model, Cmd.Cmd<Msg>] => {
   switch (msg.type) {
+<<<<<<< HEAD
     case "Increment":
       return [{ ...model, count: model.count + 1 }, Cmd.none];
     case "Decrement":
       return [{ ...model, count: model.count - 1 }, Cmd.none];
     case "Reset":
       return [{ ...model, count: 0 }, Cmd.none];
+=======
+    case 'Increment':
+      return [{ count: model.count + 1 }, Cmd.none]
+    case 'Decrement':
+      return [{ count: model.count - 1 }, Cmd.none]
+>>>>>>> 9f317b1eb62388c09e22fb704eaa2052ac83435a
   }
 };
 
+<<<<<<< HEAD
 // React component
 function Counter() {
   const { model, dispatch } = useProgram(init, update);
@@ -73,30 +123,47 @@ function Counter() {
     </div>
   );
 }
+=======
+export const view = (model: Model): TeaReact.Html<Msg> => (dispatch) => (
+  <div>
+    <button onClick={() => dispatch({ type: 'Decrement' })}>-</button>
+    <span>{model.count}</span>
+    <button onClick={() => dispatch({ type: 'Increment' })}>+</button>
+  </div>
+)
+>>>>>>> 9f317b1eb62388c09e22fb704eaa2052ac83435a
 ```
 
-## HTTP Requests (Elm-style)
+## Http Example
 
 tea-effect provides an Elm-inspired Http module for type-safe HTTP requests with Schema validation.
 
-```bash
-# Install optional dependency for Http module
-npm install @effect/platform
-```
-
 ```tsx
+<<<<<<< HEAD
 import { Http } from "tea-effect";
 import { Schema, pipe } from "effect";
+=======
+// Users.tsx
+import { Schema, pipe } from 'effect'
+import * as Cmd from 'tea-effect/Cmd'
+import * as Http from 'tea-effect/Http'
+import * as TeaReact from 'tea-effect/React'
+>>>>>>> 9f317b1eb62388c09e22fb704eaa2052ac83435a
 
-// Define your schema
 const User = Schema.Struct({
   id: Schema.Number,
+<<<<<<< HEAD
   name: Schema.String,
   email: Schema.String,
 });
+=======
+  name: Schema.String
+})
+>>>>>>> 9f317b1eb62388c09e22fb704eaa2052ac83435a
 
 type User = Schema.Schema.Type<typeof User>;
 
+<<<<<<< HEAD
 type Model = {
   users: User[];
   loading: boolean;
@@ -141,9 +208,25 @@ const quickPostRequest = Http.post(
 const authedRequest = pipe(
   fetchUsersRequest,
   Http.withHeader("Authorization", "Bearer token"),
+=======
+export type Model = {
+  users: User[]
+  loading: boolean
+  error: Http.HttpError | null
+}
+
+export type Msg =
+  | { type: 'FetchUsers' }
+  | { type: 'GotUsers'; users: User[] }
+  | { type: 'GotError'; error: Http.HttpError }
+
+const fetchUsers = pipe(
+  Http.get('/api/users', Http.expectJson(Schema.Array(User))),
+>>>>>>> 9f317b1eb62388c09e22fb704eaa2052ac83435a
   Http.withTimeout(5000)
 );
 
+<<<<<<< HEAD
 // Update function
 const update = (msg: Msg, model: Model): [Model, Cmd.Cmd<Msg>] => {
   switch (msg.type) {
@@ -224,9 +307,29 @@ const renderError = (error: Http.HttpError) => {
   }
 };
 ```
+=======
+const renderError = (error: Http.HttpError): string => {
+  switch (error._tag) {
+    case 'BadUrl':
+      return `Invalid URL: ${error.url}`
+    case 'Timeout':
+      return 'Request timed out'
+    case 'NetworkError':
+      return 'Network error - check your connection'
+    case 'BadStatus':
+      return `Server error: ${error.status}`
+    case 'BadBody':
+      return `Invalid response: ${error.error}`
+  }
+}
+>>>>>>> 9f317b1eb62388c09e22fb704eaa2052ac83435a
 
-## With Side Effects (Low-level API)
+export const init: [Model, Cmd.Cmd<Msg>] = [
+  { users: [], loading: false, error: null },
+  Cmd.none
+]
 
+<<<<<<< HEAD
 For more control, you can use `Task.attemptWith` directly with Effect:
 
 ```tsx
@@ -272,11 +375,46 @@ const update = (msg: Msg, model: Model): [Model, Cmd.Cmd<Msg>] => {
       return [{ ...model, loading: false, error: msg.error }, Cmd.none];
   }
 };
+=======
+export const update = (msg: Msg, model: Model): [Model, Cmd.Cmd<Msg>] => {
+  switch (msg.type) {
+    case 'FetchUsers':
+      return [
+        { ...model, loading: true, error: null },
+        Http.send(fetchUsers, {
+          onSuccess: (users): Msg => ({ type: 'GotUsers', users }),
+          onError: (error): Msg => ({ type: 'GotError', error })
+        })
+      ]
+    case 'GotUsers':
+      return [{ ...model, loading: false, users: msg.users }, Cmd.none]
+    case 'GotError':
+      return [{ ...model, loading: false, error: msg.error }, Cmd.none]
+  }
+}
+
+export const view = (model: Model): TeaReact.Html<Msg> => (dispatch) => (
+  <div>
+    <button onClick={() => dispatch({ type: 'FetchUsers' })} disabled={model.loading}>
+      {model.loading ? 'Loading...' : 'Fetch Users'}
+    </button>
+    {model.error && <p>{renderError(model.error)}</p>}
+    <ul>
+      {model.users.map((user) => (
+        <li key={user.id}>{user.name}</li>
+      ))}
+    </ul>
+  </div>
+)
+>>>>>>> 9f317b1eb62388c09e22fb704eaa2052ac83435a
 ```
 
-## With Subscriptions
+## Subscriptions Example
+
+Subscriptions let you listen to external events like timers, keyboard, or WebSocket messages.
 
 ```tsx
+<<<<<<< HEAD
 import { Sub } from "tea-effect";
 import { Stream } from "effect";
 
@@ -423,10 +561,58 @@ const subscriptions = (model: Model): Sub.Sub<Msg> =>
     type: "UserChangedInOtherTab",
     user,
   }));
+=======
+// Timer.tsx
+import * as Cmd from 'tea-effect/Cmd'
+import * as Sub from 'tea-effect/Sub'
+import * as TeaReact from 'tea-effect/React'
+
+export type Model = {
+  seconds: number
+  running: boolean
+}
+
+export type Msg =
+  | { type: 'Tick' }
+  | { type: 'Toggle' }
+  | { type: 'Reset' }
+
+export const init: [Model, Cmd.Cmd<Msg>] = [
+  { seconds: 0, running: false },
+  Cmd.none
+]
+
+export const update = (msg: Msg, model: Model): [Model, Cmd.Cmd<Msg>] => {
+  switch (msg.type) {
+    case 'Tick':
+      return [{ ...model, seconds: model.seconds + 1 }, Cmd.none]
+    case 'Toggle':
+      return [{ ...model, running: !model.running }, Cmd.none]
+    case 'Reset':
+      return [{ ...model, seconds: 0 }, Cmd.none]
+  }
+}
+
+export const subscriptions = (model: Model): Sub.Sub<Msg> =>
+  model.running
+    ? Sub.interval(1000, { type: 'Tick' })
+    : Sub.none
+
+export const view = (model: Model): TeaReact.Html<Msg> => (dispatch) => (
+  <div>
+    <p>{model.seconds}s</p>
+    <button onClick={() => dispatch({ type: 'Toggle' })}>
+      {model.running ? 'Stop' : 'Start'}
+    </button>
+    <button onClick={() => dispatch({ type: 'Reset' })}>Reset</button>
+  </div>
+)
+>>>>>>> 9f317b1eb62388c09e22fb704eaa2052ac83435a
 ```
 
-## With Dependencies (Dependency Injection)
+## elm-ts vs tea-effect
 
+<<<<<<< HEAD
 ```tsx
 import { Effect, Context, Layer } from "effect";
 import { Cmd, Task } from "tea-effect";
@@ -474,9 +660,32 @@ const { model, dispatch } = useProgram(init, update, subscriptions, {
 | `Html`         | Programs with view rendering                                       |
 | `React`        | React integration and hooks                                        |
 | `LocalStorage` | Browser storage with Schema encoding                               |
+=======
+| Feature | elm-ts | tea-effect |
+|---------|--------|------------|
+| FP library | fp-ts | Effect |
+| Streaming | RxJS Observable | Effect Stream |
+| Error handling | `Either<E, A>` | `Effect<A, E, R>` |
+| Dependency injection | Reader pattern | Built-in `R` type |
+| Runtime validation | io-ts | @effect/schema |
+| Resource management | Manual | Scope (automatic) |
 
-## Migration from elm-ts
+## Module Structure
 
+| Module | Description |
+|--------|-------------|
+| `Cmd` | Commands - side effects that produce messages |
+| `Sub` | Subscriptions - streams of external events |
+| `Task` | Tasks - convert Effects to Commands |
+| `Http` | HTTP requests with Schema validation |
+| `Platform` | Core TEA program runtime |
+| `Html` | Programs with view rendering |
+| `React` | React integration and hooks |
+>>>>>>> 9f317b1eb62388c09e22fb704eaa2052ac83435a
+
+## Requirements
+
+<<<<<<< HEAD
 ```typescript
 // elm-ts
 import { Cmd } from "elm-ts/lib/Cmd";
@@ -518,6 +727,24 @@ Track progress on [GitHub Projects](https://github.com/savkelita/tea-effect/proj
 - [ ] **WebSocket** - Real-time communication
 - [ ] **Debug** - Time-travel debugging, action logging
 - [ ] **Browser** - Viewport, visibility, focus events
+=======
+- Node.js 18+
+- TypeScript 5.3+
+- tsconfig.json:
+
+```json
+{
+  "compilerOptions": {
+    "strict": true,
+    "exactOptionalPropertyTypes": true
+  }
+}
+```
+
+## Examples
+
+- [tea-effect-realworld](https://github.com/savkelita/tea-effect-realworld) - Real-world examples with Counter, Http, and Subscriptions
+>>>>>>> 9f317b1eb62388c09e22fb704eaa2052ac83435a
 
 ## Contributing
 

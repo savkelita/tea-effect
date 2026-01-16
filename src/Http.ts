@@ -28,20 +28,22 @@
  *
  * @since 0.2.0
  */
-import { Effect, pipe, Option, Schema, Scope } from 'effect'
+import { Effect, pipe, Option, Schema, Duration } from 'effect'
 import * as HttpClient from '@effect/platform/HttpClient'
 import * as HttpClientRequest from '@effect/platform/HttpClientRequest'
 import * as HttpClientError from '@effect/platform/HttpClientError'
+import { FetchHttpClient } from '@effect/platform'
 import type { Cmd } from './Cmd'
 import type { Task } from './Task'
 
 /**
  * Dependencies required for HTTP operations.
+ * Note: FetchHttpClient is automatically provided by the library.
  *
  * @since 0.2.0
  * @category model
  */
-export type HttpRequirements = HttpClient.HttpClient | Scope.Scope
+export type HttpRequirements = never
 
 // -------------------------------------------------------------------------------------
 // model
@@ -473,9 +475,6 @@ export const bearerToken = (token: string): Header => authorization(`Bearer ${to
 
 const mapHttpClientError = (error: HttpClientError.HttpClientError): HttpError => {
   if (error._tag === 'RequestError') {
-    if (error.reason === 'Transport') {
-      return networkError(error.cause)
-    }
     return networkError(error.cause)
   }
   if (error._tag === 'ResponseError') {
@@ -495,19 +494,24 @@ const mapHttpClientError = (error: HttpClientError.HttpClientError): HttpError =
 // -------------------------------------------------------------------------------------
 
 /**
- * Converts a Request to a Task (Effect) that can fail with HttpError.
+ * Converts a Request to a Task (Effect) that requires HttpClient.
+ * Use this for testing with mock HttpClient layers.
  *
  * @example
  * ```ts
- * const task = Http.toTask(Http.get('/api/users', Http.expectJson(UsersSchema)))
- * // task: Task<Users[], HttpError, HttpClient>
+ * // For testing with mock client
+ * const task = Http.toTaskRaw(Http.get('/api/users', Http.expectJson(UsersSchema)))
+ * // task: Task<Users[], HttpError, HttpClient.HttpClient>
+ *
+ * // Provide mock layer in tests
+ * task.pipe(Effect.provide(MockHttpClient))
  * ```
  *
  * @since 0.2.0
  * @category execution
  */
-export const toTask = <A>(req: Request<A>): Task<A, HttpError, HttpRequirements> =>
-  Effect.gen(function* () {
+export const toTaskRaw = <A>(req: Request<A>): Task<A, HttpError, HttpClient.HttpClient> => {
+  const execute = Effect.gen(function* () {
     const client = yield* HttpClient.HttpClient
 
     // Build request based on method
@@ -551,7 +555,19 @@ export const toTask = <A>(req: Request<A>): Task<A, HttpError, HttpRequirements>
     const decoded = yield* Schema.decodeUnknown(req.expect.decoder)(json)
 
     return decoded
-  }).pipe(
+  })
+
+  // Apply timeout if specified
+  const withTimeout = req.timeout !== undefined
+    ? execute.pipe(
+        Effect.timeoutFail({
+          duration: Duration.millis(req.timeout),
+          onTimeout: () => timeout
+        })
+      )
+    : execute
+
+  return withTimeout.pipe(
     Effect.catchAll((error) => {
       // Handle our own HttpError
       if (typeof error === 'object' && error !== null && '_tag' in error) {
@@ -566,11 +582,66 @@ export const toTask = <A>(req: Request<A>): Task<A, HttpError, HttpRequirements>
         }
       }
       return Effect.fail(badBody(error))
-    })
+    }),
+    Effect.scoped
   )
+}
+
+/**
+ * Converts a Request to a Task (Effect) that can fail with HttpError.
+ * FetchHttpClient is automatically provided - no manual configuration needed.
+ *
+ * For testing with mock clients, use `toTaskRaw` instead.
+ *
+ * @example
+ * ```ts
+ * const task = Http.toTask(Http.get('/api/users', Http.expectJson(UsersSchema)))
+ * // task: Task<Users[], HttpError>
+ * ```
+ *
+ * @since 0.2.0
+ * @category execution
+ */
+export const toTask = <A>(req: Request<A>): Task<A, HttpError, HttpRequirements> =>
+  toTaskRaw(req).pipe(Effect.provide(FetchHttpClient.layer))
+
+/**
+ * Sends an HTTP request and converts it to a Cmd that requires HttpClient.
+ * Use this for testing with mock HttpClient layers.
+ *
+ * @example
+ * ```ts
+ * // For testing
+ * const cmd = Http.sendRaw(fetchUsers, {
+ *   onSuccess: (users) => ({ type: 'UsersLoaded', users }),
+ *   onError: (err) => ({ type: 'UsersFailed', err })
+ * })
+ * // cmd: Cmd<Msg, never, HttpClient.HttpClient>
+ * ```
+ *
+ * @since 0.2.0
+ * @category execution
+ */
+export const sendRaw = <A, Msg>(
+  req: Request<A>,
+  handlers: {
+    readonly onSuccess: (a: A) => Msg
+    readonly onError: (error: HttpError) => Msg
+  }
+): Cmd<Msg, never, HttpClient.HttpClient> =>
+  pipe(
+    toTaskRaw(req),
+    Effect.match({
+      onSuccess: (a) => Option.some(handlers.onSuccess(a)),
+      onFailure: (error) => Option.some(handlers.onError(error))
+    })
+  ) as Cmd<Msg, never, HttpClient.HttpClient>
 
 /**
  * Sends an HTTP request and converts it to a Cmd.
+ * FetchHttpClient is automatically provided.
+ *
+ * For testing with mock clients, use `sendRaw` instead.
  *
  * @example
  * ```ts
