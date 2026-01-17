@@ -10,6 +10,7 @@ export default defineConfig({
     'src/Html.ts',
     'src/React.ts',
     'src/Http.ts',
+    'src/LocalStorage.ts',
   ],
   format: ['cjs', 'esm'],
   dts: true,

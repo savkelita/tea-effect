@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { Effect, Option, Schema } from 'effect'
+import { Effect, Option, Schema, Stream, Chunk } from 'effect'
 import * as LocalStorage from '../src/LocalStorage'
 
 // Mock localStorage
@@ -27,6 +27,37 @@ const createMockStorage = () => {
   }
 }
 
+// Helper to run a Cmd and get the single message
+const runCmd = async <Msg>(cmd: Stream.Stream<Msg>): Promise<Msg> => {
+  const result = await Effect.runPromise(Stream.runCollect(cmd))
+  const messages = Chunk.toArray(result)
+  if (messages.length !== 1) {
+    throw new Error(`Expected 1 message, got ${messages.length}`)
+  }
+  return messages[0]
+}
+
+// Message types for tests
+type GetMsg<A> =
+  | { readonly type: 'Got'; readonly result: Option.Option<A> }
+  | { readonly type: 'Error'; readonly error: LocalStorage.LocalStorageError }
+
+type SetMsg =
+  | { readonly type: 'Saved' }
+  | { readonly type: 'Error'; readonly error: LocalStorage.LocalStorageError }
+
+type RemoveMsg =
+  | { readonly type: 'Removed' }
+  | { readonly type: 'Error'; readonly error: LocalStorage.LocalStorageError }
+
+type ClearMsg =
+  | { readonly type: 'Cleared' }
+  | { readonly type: 'Error'; readonly error: LocalStorage.LocalStorageError }
+
+type KeysMsg =
+  | { readonly type: 'Keys'; readonly keys: ReadonlyArray<string> }
+  | { readonly type: 'Error'; readonly error: LocalStorage.LocalStorageError }
+
 describe('LocalStorage', () => {
   let mockStorage: ReturnType<typeof createMockStorage>
 
@@ -51,13 +82,18 @@ describe('LocalStorage', () => {
       name: Schema.String
     })
 
-    it('should return none when key does not exist', async () => {
-      const cmd = LocalStorage.get('nonexistent', UserSchema, (result) => ({ type: 'Got', result }))
-      const result = await Effect.runPromise(cmd)
+    type User = typeof UserSchema.Type
 
-      expect(Option.isSome(result)).toBe(true)
-      if (Option.isSome(result)) {
-        expect(result.value).toEqual({ type: 'Got', result: Option.none() })
+    it('should return none when key does not exist', async () => {
+      const cmd = LocalStorage.get<User, typeof UserSchema.Encoded, GetMsg<User>>('nonexistent', UserSchema, {
+        onSuccess: (result): GetMsg<User> => ({ type: 'Got', result }),
+        onError: (error): GetMsg<User> => ({ type: 'Error', error })
+      })
+      const msg = await runCmd(cmd)
+
+      expect(msg.type).toBe('Got')
+      if (msg.type === 'Got') {
+        expect(Option.isNone(msg.result)).toBe(true)
       }
     })
 
@@ -65,62 +101,48 @@ describe('LocalStorage', () => {
       const user = { id: '1', name: 'John' }
       mockStorage.setItem('user', JSON.stringify(user))
 
-      const cmd = LocalStorage.get('user', UserSchema, (result) => ({ type: 'Got', result }))
-      const result = await Effect.runPromise(cmd)
+      const cmd = LocalStorage.get<User, typeof UserSchema.Encoded, GetMsg<User>>('user', UserSchema, {
+        onSuccess: (result): GetMsg<User> => ({ type: 'Got', result }),
+        onError: (error): GetMsg<User> => ({ type: 'Error', error })
+      })
+      const msg = await runCmd(cmd)
 
-      expect(Option.isSome(result)).toBe(true)
-      if (Option.isSome(result)) {
-        expect(result.value.type).toBe('Got')
-        expect(Option.isSome(result.value.result)).toBe(true)
-        if (Option.isSome(result.value.result)) {
-          expect(result.value.result.value).toEqual(user)
+      expect(msg.type).toBe('Got')
+      if (msg.type === 'Got') {
+        expect(Option.isSome(msg.result)).toBe(true)
+        if (Option.isSome(msg.result)) {
+          expect(msg.result.value).toEqual(user)
         }
       }
     })
 
-    it('should fail with DecodeError when value does not match schema', async () => {
+    it('should return error when value does not match schema', async () => {
       mockStorage.setItem('user', JSON.stringify({ invalid: 'data' }))
 
-      const cmd = LocalStorage.get('user', UserSchema, (result) => ({ type: 'Got', result }))
-      const result = await Effect.runPromiseExit(cmd)
+      const cmd = LocalStorage.get<User, typeof UserSchema.Encoded, GetMsg<User>>('user', UserSchema, {
+        onSuccess: (result): GetMsg<User> => ({ type: 'Got', result }),
+        onError: (error): GetMsg<User> => ({ type: 'Error', error })
+      })
+      const msg = await runCmd(cmd)
 
-      expect(result._tag).toBe('Failure')
-    })
-
-    it('should fail with DecodeError when value is invalid JSON', async () => {
-      mockStorage.setItem('user', 'not valid json')
-
-      const cmd = LocalStorage.get('user', UserSchema, (result) => ({ type: 'Got', result }))
-      const result = await Effect.runPromiseExit(cmd)
-
-      expect(result._tag).toBe('Failure')
-    })
-  })
-
-  describe('getRaw', () => {
-    it('should return none when key does not exist', async () => {
-      const cmd = LocalStorage.getRaw('nonexistent', (result) => ({ type: 'Got', result }))
-      const result = await Effect.runPromise(cmd)
-
-      expect(Option.isSome(result)).toBe(true)
-      if (Option.isSome(result)) {
-        expect(result.value).toEqual({ type: 'Got', result: Option.none() })
+      expect(msg.type).toBe('Error')
+      if (msg.type === 'Error') {
+        expect(msg.error._tag).toBe('DecodeError')
       }
     })
 
-    it('should return raw string when key exists', async () => {
-      mockStorage.setItem('key', 'raw value')
+    it('should return error when value is invalid JSON', async () => {
+      mockStorage.setItem('user', 'not valid json')
 
-      const cmd = LocalStorage.getRaw('key', (result) => ({ type: 'Got', result }))
-      const result = await Effect.runPromise(cmd)
+      const cmd = LocalStorage.get<User, typeof UserSchema.Encoded, GetMsg<User>>('user', UserSchema, {
+        onSuccess: (result): GetMsg<User> => ({ type: 'Got', result }),
+        onError: (error): GetMsg<User> => ({ type: 'Error', error })
+      })
+      const msg = await runCmd(cmd)
 
-      expect(Option.isSome(result)).toBe(true)
-      if (Option.isSome(result)) {
-        expect(result.value.type).toBe('Got')
-        expect(Option.isSome(result.value.result)).toBe(true)
-        if (Option.isSome(result.value.result)) {
-          expect(result.value.result.value).toBe('raw value')
-        }
+      expect(msg.type).toBe('Error')
+      if (msg.type === 'Error') {
+        expect(msg.error._tag).toBe('JsonParseError')
       }
     })
   })
@@ -131,35 +153,53 @@ describe('LocalStorage', () => {
       name: Schema.String
     })
 
+    type User = typeof UserSchema.Type
+
     it('should encode and store value', async () => {
       const user = { id: '1', name: 'John' }
-      const cmd = LocalStorage.set('user', UserSchema, user)
-      const result = await Effect.runPromise(cmd)
+      const cmd = LocalStorage.set<User, typeof UserSchema.Encoded, SetMsg>('user', UserSchema, user, {
+        onSuccess: (): SetMsg => ({ type: 'Saved' }),
+        onError: (error): SetMsg => ({ type: 'Error', error })
+      })
+      const msg = await runCmd(cmd)
 
-      expect(result).toEqual(Option.none())
+      expect(msg.type).toBe('Saved')
       expect(mockStorage.setItem).toHaveBeenCalledWith('user', JSON.stringify(user))
     })
 
-    it('should fail with EncodeError when value does not match schema', async () => {
+    it('should return error when value does not match schema', async () => {
       const InvalidSchema = Schema.Struct({
         id: Schema.Number
       })
 
       // @ts-expect-error - intentionally passing wrong type
-      const cmd = LocalStorage.set('test', InvalidSchema, { id: 'not a number' })
-      const result = await Effect.runPromiseExit(cmd)
+      const cmd = LocalStorage.set('test', InvalidSchema, { id: 'not a number' }, {
+        onSuccess: (): SetMsg => ({ type: 'Saved' }),
+        onError: (error): SetMsg => ({ type: 'Error', error })
+      })
+      const msg = await runCmd(cmd)
 
-      expect(result._tag).toBe('Failure')
+      expect(msg.type).toBe('Error')
+      if (msg.type === 'Error') {
+        expect(msg.error._tag).toBe('EncodeError')
+      }
     })
   })
 
-  describe('setRaw', () => {
-    it('should store raw string', async () => {
-      const cmd = LocalStorage.setRaw('key', 'raw value')
-      const result = await Effect.runPromise(cmd)
+  describe('setIgnoreErrors', () => {
+    const UserSchema = Schema.Struct({
+      id: Schema.String,
+      name: Schema.String
+    })
 
-      expect(result).toEqual(Option.none())
-      expect(mockStorage.setItem).toHaveBeenCalledWith('key', 'raw value')
+    it('should store value without producing message', async () => {
+      const user = { id: '1', name: 'John' }
+      const cmd = LocalStorage.setIgnoreErrors('user', UserSchema, user)
+      const result = await Effect.runPromise(Stream.runCollect(cmd))
+      const messages = Chunk.toArray(result)
+
+      expect(messages).toEqual([])
+      expect(mockStorage.setItem).toHaveBeenCalledWith('user', JSON.stringify(user))
     })
   })
 
@@ -167,10 +207,26 @@ describe('LocalStorage', () => {
     it('should remove item from storage', async () => {
       mockStorage.setItem('key', 'value')
 
-      const cmd = LocalStorage.remove('key')
-      const result = await Effect.runPromise(cmd)
+      const cmd = LocalStorage.remove<RemoveMsg>('key', {
+        onSuccess: (): RemoveMsg => ({ type: 'Removed' }),
+        onError: (error): RemoveMsg => ({ type: 'Error', error })
+      })
+      const msg = await runCmd(cmd)
 
-      expect(result).toEqual(Option.none())
+      expect(msg.type).toBe('Removed')
+      expect(mockStorage.removeItem).toHaveBeenCalledWith('key')
+    })
+  })
+
+  describe('removeIgnoreErrors', () => {
+    it('should remove item without producing message', async () => {
+      mockStorage.setItem('key', 'value')
+
+      const cmd = LocalStorage.removeIgnoreErrors('key')
+      const result = await Effect.runPromise(Stream.runCollect(cmd))
+      const messages = Chunk.toArray(result)
+
+      expect(messages).toEqual([])
       expect(mockStorage.removeItem).toHaveBeenCalledWith('key')
     })
   })
@@ -180,9 +236,13 @@ describe('LocalStorage', () => {
       mockStorage.setItem('key1', 'value1')
       mockStorage.setItem('key2', 'value2')
 
-      const result = await Effect.runPromise(LocalStorage.clear)
+      const cmd = LocalStorage.clear<ClearMsg>({
+        onSuccess: (): ClearMsg => ({ type: 'Cleared' }),
+        onError: (error): ClearMsg => ({ type: 'Error', error })
+      })
+      const msg = await runCmd(cmd)
 
-      expect(result).toEqual(Option.none())
+      expect(msg.type).toBe('Cleared')
       expect(mockStorage.clear).toHaveBeenCalled()
     })
   })
@@ -191,37 +251,28 @@ describe('LocalStorage', () => {
     it('should return all keys', async () => {
       mockStorage._setStore({ key1: 'value1', key2: 'value2', key3: 'value3' })
 
-      const cmd = LocalStorage.keys((keys) => ({ type: 'Keys', keys }))
-      const result = await Effect.runPromise(cmd)
+      const cmd = LocalStorage.keys<KeysMsg>({
+        onSuccess: (keys): KeysMsg => ({ type: 'Keys', keys }),
+        onError: (error): KeysMsg => ({ type: 'Error', error })
+      })
+      const msg = await runCmd(cmd)
 
-      expect(Option.isSome(result)).toBe(true)
-      if (Option.isSome(result)) {
-        expect(result.value.type).toBe('Keys')
-        expect(result.value.keys).toEqual(['key1', 'key2', 'key3'])
+      expect(msg.type).toBe('Keys')
+      if (msg.type === 'Keys') {
+        expect(msg.keys).toEqual(['key1', 'key2', 'key3'])
       }
     })
 
     it('should return empty array when storage is empty', async () => {
-      const cmd = LocalStorage.keys((keys) => ({ type: 'Keys', keys }))
-      const result = await Effect.runPromise(cmd)
+      const cmd = LocalStorage.keys<KeysMsg>({
+        onSuccess: (keys): KeysMsg => ({ type: 'Keys', keys }),
+        onError: (error): KeysMsg => ({ type: 'Error', error })
+      })
+      const msg = await runCmd(cmd)
 
-      expect(Option.isSome(result)).toBe(true)
-      if (Option.isSome(result)) {
-        expect(result.value.keys).toEqual([])
-      }
-    })
-  })
-
-  describe('length', () => {
-    it('should return number of items', async () => {
-      mockStorage._setStore({ key1: 'value1', key2: 'value2' })
-
-      const cmd = LocalStorage.length((len) => ({ type: 'Length', len }))
-      const result = await Effect.runPromise(cmd)
-
-      expect(Option.isSome(result)).toBe(true)
-      if (Option.isSome(result)) {
-        expect(result.value).toEqual({ type: 'Length', len: 2 })
+      expect(msg.type).toBe('Keys')
+      if (msg.type === 'Keys') {
+        expect(msg.keys).toEqual([])
       }
     })
   })
@@ -238,14 +289,65 @@ describe('LocalStorage', () => {
   })
 
   describe('storage not available', () => {
-    it('should fail when localStorage is not available', async () => {
+    it('should return error when localStorage is not available', async () => {
       // @ts-expect-error - simulating no localStorage
       delete global.window
 
-      const cmd = LocalStorage.getRaw('key', (r) => r)
-      const result = await Effect.runPromiseExit(cmd)
+      const UserSchema = Schema.Struct({ id: Schema.String })
+      type User = typeof UserSchema.Type
 
-      expect(result._tag).toBe('Failure')
+      const cmd = LocalStorage.get<User, typeof UserSchema.Encoded, GetMsg<User>>('key', UserSchema, {
+        onSuccess: (result): GetMsg<User> => ({ type: 'Got', result }),
+        onError: (error): GetMsg<User> => ({ type: 'Error', error })
+      })
+      const msg = await runCmd(cmd)
+
+      expect(msg.type).toBe('Error')
+      if (msg.type === 'Error') {
+        expect(msg.error._tag).toBe('StorageNotAvailable')
+      }
+    })
+  })
+
+  describe('tasks', () => {
+    const UserSchema = Schema.Struct({
+      id: Schema.String,
+      name: Schema.String
+    })
+
+    it('getTask should work directly', async () => {
+      const user = { id: '1', name: 'John' }
+      mockStorage.setItem('user', JSON.stringify(user))
+
+      const result = await Effect.runPromise(LocalStorage.getTask('user', UserSchema))
+      expect(Option.isSome(result)).toBe(true)
+      if (Option.isSome(result)) {
+        expect(result.value).toEqual(user)
+      }
+    })
+
+    it('setTask should work directly', async () => {
+      const user = { id: '1', name: 'John' }
+      await Effect.runPromise(LocalStorage.setTask('user', UserSchema, user))
+      expect(mockStorage.setItem).toHaveBeenCalledWith('user', JSON.stringify(user))
+    })
+
+    it('removeTask should work directly', async () => {
+      mockStorage.setItem('key', 'value')
+      await Effect.runPromise(LocalStorage.removeTask('key'))
+      expect(mockStorage.removeItem).toHaveBeenCalledWith('key')
+    })
+
+    it('clearTask should work directly', async () => {
+      mockStorage.setItem('key', 'value')
+      await Effect.runPromise(LocalStorage.clearTask)
+      expect(mockStorage.clear).toHaveBeenCalled()
+    })
+
+    it('keysTask should work directly', async () => {
+      mockStorage._setStore({ a: '1', b: '2' })
+      const result = await Effect.runPromise(LocalStorage.keysTask)
+      expect(result).toEqual(['a', 'b'])
     })
   })
 })

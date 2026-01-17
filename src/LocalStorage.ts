@@ -4,11 +4,13 @@
  * Provides commands for reading/writing to browser localStorage with Schema encoding/decoding,
  * and subscriptions for cross-tab synchronization via storage events.
  *
+ * Follows the same pattern as Http module with onSuccess/onError handlers.
+ *
  * @since 0.3.0
  */
 import { Effect, Option, Schema, Stream, ParseResult } from 'effect'
-import * as Cmd from './Cmd.js'
-import * as Sub from './Sub.js'
+import type { Cmd } from './Cmd'
+import * as Sub from './Sub'
 
 // -------------------------------------------------------------------------------------
 // model
@@ -80,45 +82,44 @@ export const encodeError = (key: string, error: ParseResult.ParseError): LocalSt
 })
 
 // -------------------------------------------------------------------------------------
-// commands
+// internal
+// -------------------------------------------------------------------------------------
+
+const getStorage = (): Effect.Effect<Storage, LocalStorageError> =>
+  Effect.try({
+    try: () => {
+      if (typeof window === 'undefined' || !window.localStorage) {
+        throw new Error('localStorage not available')
+      }
+      return window.localStorage
+    },
+    catch: () => storageNotAvailable
+  })
+
+// -------------------------------------------------------------------------------------
+// tasks (raw Effect operations)
 // -------------------------------------------------------------------------------------
 
 /**
- * Gets an item from localStorage and decodes it using the provided schema.
- *
+ * Task that gets an item from localStorage and decodes it using the provided schema.
  * Returns `Option.none()` if the key doesn't exist.
- * Fails with `LocalStorageError` if storage is not available or decoding fails.
  *
- * @since 0.3.0
- * @category commands
- * @example
- * ```ts
- * import * as LocalStorage from 'tea-effect/LocalStorage'
- * import * as Schema from 'effect/Schema'
+ * Use this for testing or when you need raw Effect access.
+ * For normal usage, prefer `get` with handlers.
  *
- * const UserSchema = Schema.Struct({
- *   id: Schema.String,
- *   name: Schema.String
- * })
- *
- * const loadUser = LocalStorage.get(
- *   'user',
- *   UserSchema,
- *   (result) => ({ type: 'UserLoaded', user: result })
- * )
- * ```
+ * @since 0.4.0
+ * @category tasks
  */
-export const get = <A, I, Msg>(
+export const getTask = <A, I>(
   key: string,
-  schema: Schema.Schema<A, I>,
-  toMsg: (result: Option.Option<A>) => Msg
-): Cmd.Cmd<Msg, LocalStorageError> =>
+  schema: Schema.Schema<A, I>
+): Effect.Effect<Option.Option<A>, LocalStorageError> =>
   Effect.gen(function* () {
     const storage = yield* getStorage()
     const raw = storage.getItem(key)
 
     if (raw === null) {
-      return Option.some(toMsg(Option.none()))
+      return Option.none()
     }
 
     const parsed = yield* Effect.try({
@@ -130,51 +131,23 @@ export const get = <A, I, Msg>(
       Effect.mapError((error) => decodeError(key, error))
     )
 
-    return Option.some(toMsg(Option.some(decoded)))
+    return Option.some(decoded)
   })
 
 /**
- * Gets a raw string from localStorage without decoding.
+ * Task that sets an item in localStorage, encoding it using the provided schema.
  *
- * Returns `Option.none()` if the key doesn't exist.
+ * Use this for testing or when you need raw Effect access.
+ * For normal usage, prefer `set` with handlers.
  *
- * @since 0.3.0
- * @category commands
+ * @since 0.4.0
+ * @category tasks
  */
-export const getRaw = <Msg>(
-  key: string,
-  toMsg: (result: Option.Option<string>) => Msg
-): Cmd.Cmd<Msg, LocalStorageError> =>
-  Effect.gen(function* () {
-    const storage = yield* getStorage()
-    const raw = storage.getItem(key)
-    return Option.some(toMsg(raw === null ? Option.none() : Option.some(raw)))
-  })
-
-/**
- * Sets an item in localStorage, encoding it using the provided schema.
- *
- * @since 0.3.0
- * @category commands
- * @example
- * ```ts
- * import * as LocalStorage from 'tea-effect/LocalStorage'
- * import * as Schema from 'effect/Schema'
- *
- * const UserSchema = Schema.Struct({
- *   id: Schema.String,
- *   name: Schema.String
- * })
- *
- * const saveUser = (user: User) =>
- *   LocalStorage.set('user', UserSchema, user)
- * ```
- */
-export const set = <A, I>(
+export const setTask = <A, I>(
   key: string,
   schema: Schema.Schema<A, I>,
   value: A
-): Cmd.Cmd<never, LocalStorageError> =>
+): Effect.Effect<void, LocalStorageError> =>
   Effect.gen(function* () {
     const storage = yield* getStorage()
 
@@ -189,69 +162,39 @@ export const set = <A, I>(
           ? quotaExceeded(key)
           : storageNotAvailable
     })
-
-    return Option.none()
   })
 
 /**
- * Sets a raw string in localStorage without encoding.
+ * Task that removes an item from localStorage.
  *
- * @since 0.3.0
- * @category commands
+ * @since 0.4.0
+ * @category tasks
  */
-export const setRaw = (
-  key: string,
-  value: string
-): Cmd.Cmd<never, LocalStorageError> =>
-  Effect.gen(function* () {
-    const storage = yield* getStorage()
-
-    yield* Effect.try({
-      try: () => storage.setItem(key, value),
-      catch: (error) =>
-        error instanceof DOMException && error.name === 'QuotaExceededError'
-          ? quotaExceeded(key)
-          : storageNotAvailable
-    })
-
-    return Option.none()
-  })
-
-/**
- * Removes an item from localStorage.
- *
- * @since 0.3.0
- * @category commands
- */
-export const remove = (key: string): Cmd.Cmd<never, LocalStorageError> =>
+export const removeTask = (key: string): Effect.Effect<void, LocalStorageError> =>
   Effect.gen(function* () {
     const storage = yield* getStorage()
     storage.removeItem(key)
-    return Option.none()
   })
 
 /**
- * Clears all items from localStorage.
+ * Task that clears all items from localStorage.
  *
- * @since 0.3.0
- * @category commands
+ * @since 0.4.0
+ * @category tasks
  */
-export const clear: Cmd.Cmd<never, LocalStorageError> =
+export const clearTask: Effect.Effect<void, LocalStorageError> =
   Effect.gen(function* () {
     const storage = yield* getStorage()
     storage.clear()
-    return Option.none()
   })
 
 /**
- * Gets all keys currently in localStorage.
+ * Task that gets all keys currently in localStorage.
  *
- * @since 0.3.0
- * @category commands
+ * @since 0.4.0
+ * @category tasks
  */
-export const keys = <Msg>(
-  toMsg: (keys: ReadonlyArray<string>) => Msg
-): Cmd.Cmd<Msg, LocalStorageError> =>
+export const keysTask: Effect.Effect<ReadonlyArray<string>, LocalStorageError> =
   Effect.gen(function* () {
     const storage = yield* getStorage()
     const result: string[] = []
@@ -261,22 +204,160 @@ export const keys = <Msg>(
         result.push(key)
       }
     }
-    return Option.some(toMsg(result))
+    return result
   })
 
+// -------------------------------------------------------------------------------------
+// commands (with handlers, like Http.send)
+// -------------------------------------------------------------------------------------
+
 /**
- * Gets the number of items in localStorage.
+ * Gets an item from localStorage and decodes it using the provided schema.
+ * Returns `Option.none()` if the key doesn't exist.
  *
- * @since 0.3.0
+ * Follows the same pattern as `Http.send` with onSuccess/onError handlers.
+ *
+ * @since 0.4.0
+ * @category commands
+ * @example
+ * ```ts
+ * const Counter = Schema.Struct({ count: Schema.Number })
+ *
+ * const loadCounter = LocalStorage.get('counter', Counter, {
+ *   onSuccess: (data) => ({ type: 'Loaded', data }),
+ *   onError: (err) => ({ type: 'StorageError', err })
+ * })
+ * ```
+ */
+export const get = <A, I, Msg>(
+  key: string,
+  schema: Schema.Schema<A, I>,
+  handlers: {
+    readonly onSuccess: (data: Option.Option<A>) => Msg
+    readonly onError: (error: LocalStorageError) => Msg
+  }
+): Cmd<Msg> =>
+  Stream.fromEffect(
+    Effect.match(getTask(key, schema), {
+      onSuccess: (data) => handlers.onSuccess(data),
+      onFailure: (error) => handlers.onError(error)
+    })
+  )
+
+/**
+ * Sets an item in localStorage, encoding it using the provided schema.
+ *
+ * Follows the same pattern as `Http.send` with onSuccess/onError handlers.
+ *
+ * @since 0.4.0
+ * @category commands
+ * @example
+ * ```ts
+ * const Counter = Schema.Struct({ count: Schema.Number })
+ *
+ * const saveCounter = LocalStorage.set('counter', Counter, { count: 5 }, {
+ *   onSuccess: () => ({ type: 'Saved' }),
+ *   onError: (err) => ({ type: 'StorageError', err })
+ * })
+ * ```
+ */
+export const set = <A, I, Msg>(
+  key: string,
+  schema: Schema.Schema<A, I>,
+  value: A,
+  handlers: {
+    readonly onSuccess: () => Msg
+    readonly onError: (error: LocalStorageError) => Msg
+  }
+): Cmd<Msg> =>
+  Stream.fromEffect(
+    Effect.match(setTask(key, schema, value), {
+      onSuccess: () => handlers.onSuccess(),
+      onFailure: (error) => handlers.onError(error)
+    })
+  )
+
+/**
+ * Sets an item in localStorage without requiring error handling.
+ * Errors are silently ignored - use this for fire-and-forget operations.
+ *
+ * @since 0.4.0
+ * @category commands
+ * @example
+ * ```ts
+ * // Fire and forget - no message produced
+ * const saveCounter = LocalStorage.setIgnoreErrors('counter', Counter, { count: 5 })
+ * ```
+ */
+export const setIgnoreErrors = <A, I>(
+  key: string,
+  schema: Schema.Schema<A, I>,
+  value: A
+): Cmd<never> =>
+  Stream.execute(Effect.ignore(setTask(key, schema, value)))
+
+/**
+ * Removes an item from localStorage.
+ *
+ * @since 0.4.0
  * @category commands
  */
-export const length = <Msg>(
-  toMsg: (length: number) => Msg
-): Cmd.Cmd<Msg, LocalStorageError> =>
-  Effect.gen(function* () {
-    const storage = yield* getStorage()
-    return Option.some(toMsg(storage.length))
-  })
+export const remove = <Msg>(
+  key: string,
+  handlers: {
+    readonly onSuccess: () => Msg
+    readonly onError: (error: LocalStorageError) => Msg
+  }
+): Cmd<Msg> =>
+  Stream.fromEffect(
+    Effect.match(removeTask(key), {
+      onSuccess: () => handlers.onSuccess(),
+      onFailure: (error) => handlers.onError(error)
+    })
+  )
+
+/**
+ * Removes an item from localStorage without requiring error handling.
+ *
+ * @since 0.4.0
+ * @category commands
+ */
+export const removeIgnoreErrors = (key: string): Cmd<never> =>
+  Stream.execute(Effect.ignore(removeTask(key)))
+
+/**
+ * Clears all items from localStorage.
+ *
+ * @since 0.4.0
+ * @category commands
+ */
+export const clear = <Msg>(handlers: {
+  readonly onSuccess: () => Msg
+  readonly onError: (error: LocalStorageError) => Msg
+}): Cmd<Msg> =>
+  Stream.fromEffect(
+    Effect.match(clearTask, {
+      onSuccess: () => handlers.onSuccess(),
+      onFailure: (error) => handlers.onError(error)
+    })
+  )
+
+/**
+ * Gets all keys currently in localStorage.
+ *
+ * @since 0.4.0
+ * @category commands
+ */
+export const keys = <Msg>(handlers: {
+  readonly onSuccess: (keys: ReadonlyArray<string>) => Msg
+  readonly onError: (error: LocalStorageError) => Msg
+}): Cmd<Msg> =>
+  Stream.fromEffect(
+    Effect.match(keysTask, {
+      onSuccess: (ks) => handlers.onSuccess(ks),
+      onFailure: (error) => handlers.onError(error)
+    })
+  )
 
 // -------------------------------------------------------------------------------------
 // subscriptions
@@ -292,27 +373,23 @@ export const length = <Msg>(
  * @category subscriptions
  * @example
  * ```ts
- * import * as LocalStorage from 'tea-effect/LocalStorage'
- * import * as Schema from 'effect/Schema'
+ * const Counter = Schema.Struct({ count: Schema.Number })
  *
- * const UserSchema = Schema.Struct({
- *   id: Schema.String,
- *   name: Schema.String
- * })
- *
- * // In your subscriptions function:
  * const subscriptions = (model: Model) =>
- *   LocalStorage.onChange('user', UserSchema, (result) => ({
- *     type: 'UserChangedInOtherTab',
- *     user: result
- *   }))
+ *   LocalStorage.onChange('counter', Counter, {
+ *     onSuccess: (data) => ({ type: 'SyncedFromOtherTab', data }),
+ *     onError: (err) => ({ type: 'SyncError', err })
+ *   })
  * ```
  */
 export const onChange = <A, I, Msg>(
   key: string,
   schema: Schema.Schema<A, I>,
-  toMsg: (result: Option.Option<A>) => Msg
-): Sub.Sub<Msg, LocalStorageError> =>
+  handlers: {
+    readonly onSuccess: (data: Option.Option<A>) => Msg
+    readonly onError: (error: LocalStorageError) => Msg
+  }
+): Sub.Sub<Msg> =>
   Stream.asyncPush<StorageEvent>((emit) =>
     Effect.sync(() => {
       const handler = (event: StorageEvent) => {
@@ -326,7 +403,7 @@ export const onChange = <A, I, Msg>(
   ).pipe(
     Stream.mapEffect((event) => {
       if (event.newValue === null) {
-        return Effect.succeed(toMsg(Option.none()))
+        return Effect.succeed(handlers.onSuccess(Option.none()))
       }
 
       return Effect.gen(function* () {
@@ -339,8 +416,10 @@ export const onChange = <A, I, Msg>(
           Effect.mapError((error) => decodeError(key, error))
         )
 
-        return toMsg(Option.some(decoded))
-      })
+        return handlers.onSuccess(Option.some(decoded))
+      }).pipe(
+        Effect.catchAll((error) => Effect.succeed(handlers.onError(error)))
+      )
     })
   )
 
@@ -383,19 +462,4 @@ export const onAnyChange = <Msg>(
     }
     window.addEventListener('storage', handler)
     return () => window.removeEventListener('storage', handler)
-  })
-
-// -------------------------------------------------------------------------------------
-// internal
-// -------------------------------------------------------------------------------------
-
-const getStorage = (): Effect.Effect<Storage, LocalStorageError> =>
-  Effect.try({
-    try: () => {
-      if (typeof window === 'undefined' || !window.localStorage) {
-        throw new Error('localStorage not available')
-      }
-      return window.localStorage
-    },
-    catch: () => storageNotAvailable
   })
