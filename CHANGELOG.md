@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2025-01-17
+
+### Added
+
+- **LocalStorage** module - Browser storage with Schema encoding
+  - `get` / `set` - Read/write with Schema validation and `{onSuccess, onError}` handlers
+  - `setIgnoreErrors` / `removeIgnoreErrors` - For non-critical operations
+  - `remove` / `clear` / `keys` - Storage management with handlers
+  - `getTask` / `setTask` / `removeTask` / `clearTask` / `keysTask` - Effect-based API
+  - `onChange` - Subscription for cross-tab changes with Schema decoding
+  - `onChangeRaw` - Subscription for raw string changes
+  - `onAnyChange` - Subscription for all storage changes
+  - Typed error handling: `StorageNotAvailable`, `QuotaExceeded`, `JsonParseError`, `DecodeError`, `EncodeError`
+
+### Changed
+
+- **Cmd** module - Refactored from `Effect<Option<Msg>>` to `Stream<Msg>` (breaking change)
+  - `Cmd.batch` now correctly dispatches ALL messages, not just the first one
+  - Messages dispatch as each command completes (Elm semantics)
+  - `Cmd.batch` uses `Stream.mergeAll` for concurrent execution
+  - Platform uses `Stream.runForEach` with `Effect.forkScoped` to process commands
+
 ## [0.3.0] - 2025-01-16
 
 ### Changed
@@ -75,24 +97,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Added optional `@effect/platform` ^0.73.0 peer dependency (required for Http module)
 
-## [Unreleased]
-
-### Added
-
-- **LocalStorage** module - Browser storage with Schema encoding
-  - `get` - Read and decode value with Schema
-  - `getRaw` - Read raw string without decoding
-  - `set` - Encode and store value with Schema
-  - `setRaw` - Store raw string without encoding
-  - `remove` - Remove item from storage
-  - `clear` - Clear all items from storage
-  - `keys` - Get all storage keys
-  - `length` - Get number of items
-  - `onChange` - Subscription for cross-tab changes with Schema decoding
-  - `onChangeRaw` - Subscription for raw string changes
-  - `onAnyChange` - Subscription for all storage changes
-  - Typed error handling: `StorageNotAvailable`, `QuotaExceeded`, `JsonParseError`, `DecodeError`, `EncodeError`
-
 ## [0.1.1] - 2025-01-06
 
 ### Fixed
@@ -111,6 +115,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Use `dispatchRef` pattern instead of `useMemo` for dispatch stability
   - Simplify setup effect using `Effect.scoped` wrapper
 
+[0.4.0]: https://github.com/savkelita/tea-effect/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/savkelita/tea-effect/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/savkelita/tea-effect/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/savkelita/tea-effect/compare/v0.1.0...v0.1.1
