@@ -83,7 +83,7 @@ tea-effect provides an Elm-inspired Http module for type-safe HTTP requests with
 
 ```tsx
 // Users.tsx
-import { Schema, pipe } from 'effect'
+import { Schema, Option, pipe } from 'effect'
 import * as Cmd from 'tea-effect/Cmd'
 import * as Http from 'tea-effect/Http'
 import * as TeaReact from 'tea-effect/React'
@@ -98,7 +98,7 @@ type User = Schema.Schema.Type<typeof User>
 export type Model = {
   users: User[]
   loading: boolean
-  error: Http.HttpError | null
+  error: Option.Option<Http.HttpError>
 }
 
 export type Msg =
@@ -126,8 +126,17 @@ const renderError = (error: Http.HttpError): string => {
   }
 }
 
+const renderErrorMessage = (error: Option.Option<Http.HttpError>) =>
+  pipe(
+    error,
+    Option.match({
+      onNone: () => null,
+      onSome: (e) => <p>{renderError(e)}</p>
+    })
+  )
+
 export const init: [Model, Cmd.Cmd<Msg>] = [
-  { users: [], loading: false, error: null },
+  { users: [], loading: false, error: Option.none() },
   Cmd.none
 ]
 
@@ -135,7 +144,7 @@ export const update = (msg: Msg, model: Model): [Model, Cmd.Cmd<Msg>] => {
   switch (msg.type) {
     case 'FetchUsers':
       return [
-        { ...model, loading: true, error: null },
+        { ...model, loading: true, error: Option.none() },
         Http.send(fetchUsers, {
           onSuccess: (users): Msg => ({ type: 'GotUsers', users }),
           onError: (error): Msg => ({ type: 'GotError', error })
@@ -144,7 +153,7 @@ export const update = (msg: Msg, model: Model): [Model, Cmd.Cmd<Msg>] => {
     case 'GotUsers':
       return [{ ...model, loading: false, users: msg.users }, Cmd.none]
     case 'GotError':
-      return [{ ...model, loading: false, error: msg.error }, Cmd.none]
+      return [{ ...model, loading: false, error: Option.some(msg.error) }, Cmd.none]
   }
 }
 
@@ -153,7 +162,7 @@ export const view = (model: Model): TeaReact.Html<Msg> => (dispatch) => (
     <button onClick={() => dispatch({ type: 'FetchUsers' })} disabled={model.loading}>
       {model.loading ? 'Loading...' : 'Fetch Users'}
     </button>
-    {model.error && <p>{renderError(model.error)}</p>}
+    {renderErrorMessage(model.error)}
     <ul>
       {model.users.map((user) => (
         <li key={user.id}>{user.name}</li>
