@@ -31,50 +31,52 @@ Note: `effect` and `@effect/platform` are peer dependencies
 ## React
 
 ```tsx
-import * as TeaReact from 'tea-effect/React'
-import { Effect } from 'effect'
-import { createRoot } from 'react-dom/client'
-import * as Counter from './Counter'
+import * as TeaReact from "tea-effect/React";
+import { Effect } from "effect";
+import { createRoot } from "react-dom/client";
+import * as Counter from "./Counter";
 
-const root = createRoot(document.getElementById('app')!)
+const root = createRoot(document.getElementById("app")!);
 
 Effect.runPromise(
   TeaReact.run(
     TeaReact.program(Counter.init, Counter.update, Counter.view),
-    (dom) => root.render(dom)
-  )
-)
+    (dom) => root.render(dom),
+  ),
+);
 ```
 
 ## Counter Example
 
 ```tsx
 // Counter.tsx
-import * as Cmd from 'tea-effect/Cmd'
-import * as TeaReact from 'tea-effect/React'
+import * as Cmd from "tea-effect/Cmd";
+import * as TeaReact from "tea-effect/React";
 
-export type Model = { count: number }
+export type Model = { count: number };
 
-export type Msg = { type: 'Increment' } | { type: 'Decrement' }
+export type Msg = { type: "Increment" } | { type: "Decrement" };
 
-export const init: [Model, Cmd.Cmd<Msg>] = [{ count: 0 }, Cmd.none]
+export const init: [Model, Cmd.Cmd<Msg>] = [{ count: 0 }, Cmd.none];
 
 export const update = (msg: Msg, model: Model): [Model, Cmd.Cmd<Msg>] => {
   switch (msg.type) {
-    case 'Increment':
-      return [{ count: model.count + 1 }, Cmd.none]
-    case 'Decrement':
-      return [{ count: model.count - 1 }, Cmd.none]
+    case "Increment":
+      return [{ count: model.count + 1 }, Cmd.none];
+    case "Decrement":
+      return [{ count: model.count - 1 }, Cmd.none];
   }
-}
+};
 
-export const view = (model: Model): TeaReact.Html<Msg> => (dispatch) => (
-  <div>
-    <button onClick={() => dispatch({ type: 'Decrement' })}>-</button>
-    <span>{model.count}</span>
-    <button onClick={() => dispatch({ type: 'Increment' })}>+</button>
-  </div>
-)
+export const view =
+  (model: Model): TeaReact.Html<Msg> =>
+  (dispatch) => (
+    <div>
+      <button onClick={() => dispatch({ type: "Decrement" })}>-</button>
+      <span>{model.count}</span>
+      <button onClick={() => dispatch({ type: "Increment" })}>+</button>
+    </div>
+  );
 ```
 
 ## Http Example
@@ -83,93 +85,101 @@ tea-effect provides an Elm-inspired Http module for type-safe HTTP requests with
 
 ```tsx
 // Users.tsx
-import { Schema, Option, pipe } from 'effect'
-import * as Cmd from 'tea-effect/Cmd'
-import * as Http from 'tea-effect/Http'
-import * as TeaReact from 'tea-effect/React'
+import { Schema, Option, pipe } from "effect";
+import * as Cmd from "tea-effect/Cmd";
+import * as Http from "tea-effect/Http";
+import * as TeaReact from "tea-effect/React";
 
 const User = Schema.Struct({
   id: Schema.Number,
-  name: Schema.String
-})
+  name: Schema.String,
+});
 
-type User = Schema.Schema.Type<typeof User>
+type User = Schema.Schema.Type<typeof User>;
 
 export type Model = {
-  users: User[]
-  loading: boolean
-  error: Option.Option<Http.HttpError>
-}
+  users: User[];
+  loading: boolean;
+  error: Option.Option<Http.HttpError>;
+};
 
 export type Msg =
-  | { type: 'FetchUsers' }
-  | { type: 'GotUsers'; users: User[] }
-  | { type: 'GotError'; error: Http.HttpError }
+  | { type: "FetchUsers" }
+  | { type: "GotUsers"; users: User[] }
+  | { type: "GotError"; error: Http.HttpError };
 
 const fetchUsers = pipe(
-  Http.get('/api/users', Http.expectJson(Schema.Array(User))),
-  Http.withTimeout(5000)
-)
+  Http.get("/api/users", Http.expectJson(Schema.Array(User))),
+  Http.withTimeout(5000),
+);
 
 const renderError = (error: Http.HttpError): string => {
   switch (error._tag) {
-    case 'BadUrl':
-      return `Invalid URL: ${error.url}`
-    case 'Timeout':
-      return 'Request timed out'
-    case 'NetworkError':
-      return 'Network error - check your connection'
-    case 'BadStatus':
-      return `Server error: ${error.status}`
-    case 'BadBody':
-      return `Invalid response: ${error.error}`
+    case "BadUrl":
+      return `Invalid URL: ${error.url}`;
+    case "Timeout":
+      return "Request timed out";
+    case "NetworkError":
+      return "Network error - check your connection";
+    case "BadStatus":
+      return `Server error: ${error.status}`;
+    case "BadBody":
+      return `Invalid response: ${error.error}`;
   }
-}
+};
 
 const renderErrorMessage = (error: Option.Option<Http.HttpError>) =>
   pipe(
     error,
     Option.match({
       onNone: () => null,
-      onSome: (e) => <p>{renderError(e)}</p>
-    })
-  )
+      onSome: (e) => <p>{renderError(e)}</p>,
+    }),
+  );
 
 export const init: [Model, Cmd.Cmd<Msg>] = [
   { users: [], loading: false, error: Option.none() },
-  Cmd.none
-]
+  Cmd.none,
+];
 
 export const update = (msg: Msg, model: Model): [Model, Cmd.Cmd<Msg>] => {
   switch (msg.type) {
-    case 'FetchUsers':
+    case "FetchUsers":
       return [
         { ...model, loading: true, error: Option.none() },
         Http.send(fetchUsers, {
-          onSuccess: (users): Msg => ({ type: 'GotUsers', users }),
-          onError: (error): Msg => ({ type: 'GotError', error })
-        })
-      ]
-    case 'GotUsers':
-      return [{ ...model, loading: false, users: msg.users }, Cmd.none]
-    case 'GotError':
-      return [{ ...model, loading: false, error: Option.some(msg.error) }, Cmd.none]
+          onSuccess: (users): Msg => ({ type: "GotUsers", users }),
+          onError: (error): Msg => ({ type: "GotError", error }),
+        }),
+      ];
+    case "GotUsers":
+      return [{ ...model, loading: false, users: msg.users }, Cmd.none];
+    case "GotError":
+      return [
+        { ...model, loading: false, error: Option.some(msg.error) },
+        Cmd.none,
+      ];
   }
-}
+};
 
-export const view = (model: Model): TeaReact.Html<Msg> => (dispatch) => (
-  <div>
-    <button onClick={() => dispatch({ type: 'FetchUsers' })} disabled={model.loading}>
-      {model.loading ? 'Loading...' : 'Fetch Users'}
-    </button>
-    {renderErrorMessage(model.error)}
-    <ul>
-      {model.users.map((user) => (
-        <li key={user.id}>{user.name}</li>
-      ))}
-    </ul>
-  </div>
-)
+export const view =
+  (model: Model): TeaReact.Html<Msg> =>
+  (dispatch) => (
+    <div>
+      <button
+        onClick={() => dispatch({ type: "FetchUsers" })}
+        disabled={model.loading}
+      >
+        {model.loading ? "Loading..." : "Fetch Users"}
+      </button>
+      {renderErrorMessage(model.error)}
+      <ul>
+        {model.users.map((user) => (
+          <li key={user.id}>{user.name}</li>
+        ))}
+      </ul>
+    </div>
+  );
 ```
 
 ## Subscriptions Example
@@ -178,74 +188,72 @@ Subscriptions let you listen to external events like timers, keyboard, or WebSoc
 
 ```tsx
 // Timer.tsx
-import * as Cmd from 'tea-effect/Cmd'
-import * as Sub from 'tea-effect/Sub'
-import * as TeaReact from 'tea-effect/React'
+import * as Cmd from "tea-effect/Cmd";
+import * as Sub from "tea-effect/Sub";
+import * as TeaReact from "tea-effect/React";
 
 export type Model = {
-  seconds: number
-  running: boolean
-}
+  seconds: number;
+  running: boolean;
+};
 
-export type Msg =
-  | { type: 'Tick' }
-  | { type: 'Toggle' }
-  | { type: 'Reset' }
+export type Msg = { type: "Tick" } | { type: "Toggle" } | { type: "Reset" };
 
 export const init: [Model, Cmd.Cmd<Msg>] = [
   { seconds: 0, running: false },
-  Cmd.none
-]
+  Cmd.none,
+];
 
 export const update = (msg: Msg, model: Model): [Model, Cmd.Cmd<Msg>] => {
   switch (msg.type) {
-    case 'Tick':
-      return [{ ...model, seconds: model.seconds + 1 }, Cmd.none]
-    case 'Toggle':
-      return [{ ...model, running: !model.running }, Cmd.none]
-    case 'Reset':
-      return [{ ...model, seconds: 0 }, Cmd.none]
+    case "Tick":
+      return [{ ...model, seconds: model.seconds + 1 }, Cmd.none];
+    case "Toggle":
+      return [{ ...model, running: !model.running }, Cmd.none];
+    case "Reset":
+      return [{ ...model, seconds: 0 }, Cmd.none];
   }
-}
+};
 
 export const subscriptions = (model: Model): Sub.Sub<Msg> =>
-  model.running
-    ? Sub.interval(1000, { type: 'Tick' })
-    : Sub.none
+  model.running ? Sub.interval(1000, { type: "Tick" }) : Sub.none;
 
-export const view = (model: Model): TeaReact.Html<Msg> => (dispatch) => (
-  <div>
-    <p>{model.seconds}s</p>
-    <button onClick={() => dispatch({ type: 'Toggle' })}>
-      {model.running ? 'Stop' : 'Start'}
-    </button>
-    <button onClick={() => dispatch({ type: 'Reset' })}>Reset</button>
-  </div>
-)
+export const view =
+  (model: Model): TeaReact.Html<Msg> =>
+  (dispatch) => (
+    <div>
+      <p>{model.seconds}s</p>
+      <button onClick={() => dispatch({ type: "Toggle" })}>
+        {model.running ? "Stop" : "Start"}
+      </button>
+      <button onClick={() => dispatch({ type: "Reset" })}>Reset</button>
+    </div>
+  );
 ```
 
 ## elm-ts vs tea-effect
 
-| Feature | elm-ts | tea-effect |
-|---------|--------|------------|
-| FP library | fp-ts | Effect |
-| Streaming | RxJS Observable | Effect Stream |
-| Error handling | `Either<E, A>` | `Effect<A, E, R>` |
-| Dependency injection | Reader pattern | Built-in `R` type |
-| Runtime validation | io-ts | @effect/schema |
-| Resource management | Manual | Scope (automatic) |
+| Feature              | elm-ts          | tea-effect        |
+| -------------------- | --------------- | ----------------- |
+| FP library           | fp-ts           | Effect            |
+| Streaming            | RxJS Observable | Effect Stream     |
+| Error handling       | `Either<E, A>`  | `Effect<A, E, R>` |
+| Dependency injection | Reader pattern  | Built-in `R` type |
+| Runtime validation   | io-ts           | @effect/schema    |
+| Resource management  | Manual          | Scope (automatic) |
 
 ## Module Structure
 
-| Module | Description |
-|--------|-------------|
-| `Cmd` | Commands - side effects that produce messages |
-| `Sub` | Subscriptions - streams of external events |
-| `Task` | Tasks - convert Effects to Commands |
-| `Http` | HTTP requests with Schema validation |
-| `Platform` | Core TEA program runtime |
-| `Html` | Programs with view rendering |
-| `React` | React integration and hooks |
+| Module         | Description                                   |
+| -------------- | --------------------------------------------- |
+| `Cmd`          | Commands - side effects that produce messages |
+| `Sub`          | Subscriptions - streams of external events    |
+| `Task`         | Tasks - convert Effects to Commands           |
+| `Http`         | HTTP requests with Schema validation          |
+| `LocalStorage` | Browser storage with Schema encoding          |
+| `Platform`     | Core TEA program runtime                      |
+| `Html`         | Programs with view rendering                  |
+| `React`        | React integration and hooks                   |
 
 ## Requirements
 

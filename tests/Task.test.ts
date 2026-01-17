@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { Effect, Option, pipe } from 'effect'
+import { Effect, Stream, Chunk, pipe } from 'effect'
 import * as Task from '../src/Task'
 
 describe('Task', () => {
@@ -23,8 +23,9 @@ describe('Task', () => {
     it('should convert infallible task to cmd', async () => {
       const task = Task.succeed(42)
       const cmd = Task.perform((n) => ({ type: 'GotNumber', n }))(task)
-      const result = await Effect.runPromise(cmd)
-      expect(result).toEqual(Option.some({ type: 'GotNumber', n: 42 }))
+      const result = await Effect.runPromise(Stream.runCollect(cmd))
+      const messages = Chunk.toArray(result)
+      expect(messages).toEqual([{ type: 'GotNumber', n: 42 }])
     })
   })
 
@@ -36,8 +37,9 @@ describe('Task', () => {
           ? { type: 'Success', value: either.right }
           : { type: 'Failure', error: either.left }
       )(task)
-      const result = await Effect.runPromise(cmd)
-      expect(result).toEqual(Option.some({ type: 'Success', value: 'ok' }))
+      const result = await Effect.runPromise(Stream.runCollect(cmd))
+      const messages = Chunk.toArray(result)
+      expect(messages).toEqual([{ type: 'Success', value: 'ok' }])
     })
 
     it('should handle failure', async () => {
@@ -47,8 +49,9 @@ describe('Task', () => {
           ? { type: 'Success', value: either.right }
           : { type: 'Failure', error: either.left }
       )(task)
-      const result = await Effect.runPromise(cmd)
-      expect(result).toEqual(Option.some({ type: 'Failure', error: 'error' }))
+      const result = await Effect.runPromise(Stream.runCollect(cmd))
+      const messages = Chunk.toArray(result)
+      expect(messages).toEqual([{ type: 'Failure', error: 'error' }])
     })
   })
 
@@ -64,8 +67,9 @@ describe('Task', () => {
           onFailure: (e): Msg => ({ type: 'Failure', e })
         })
       )
-      const result = await Effect.runPromise(cmd)
-      expect(result).toEqual(Option.some({ type: 'Success', n: 42 }))
+      const result = await Effect.runPromise(Stream.runCollect(cmd))
+      const messages = Chunk.toArray(result)
+      expect(messages).toEqual([{ type: 'Success', n: 42 }])
     })
 
     it('should handle failure with separate handlers', async () => {
@@ -77,8 +81,9 @@ describe('Task', () => {
           onFailure: (e): Msg => ({ type: 'Failure', e })
         })
       )
-      const result = await Effect.runPromise(cmd)
-      expect(result).toEqual(Option.some({ type: 'Failure', e: 'oops' }))
+      const result = await Effect.runPromise(Stream.runCollect(cmd))
+      const messages = Chunk.toArray(result)
+      expect(messages).toEqual([{ type: 'Failure', e: 'oops' }])
     })
   })
 
