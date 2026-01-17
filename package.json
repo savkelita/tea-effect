@@ -1,6 +1,6 @@
 {
   "name": "tea-effect",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "The Elm Architecture for TypeScript with Effect",
   "keywords": [
     "elm",
@@ -59,6 +59,11 @@
       "types": "./dist/React.d.ts",
       "import": "./dist/React.mjs",
       "require": "./dist/React.js"
+    },
+    "./Navigation": {
+      "types": "./dist/Navigation.d.ts",
+      "import": "./dist/Navigation.mjs",
+      "require": "./dist/Navigation.js"
     },
     "./Http": {
       "types": "./dist/Http.d.ts",
