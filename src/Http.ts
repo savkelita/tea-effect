@@ -28,7 +28,7 @@
  *
  * @since 0.2.0
  */
-import { Effect, pipe, Option, Schema, Duration } from 'effect'
+import { Effect, Schema, Duration, Stream } from 'effect'
 import * as HttpClient from '@effect/platform/HttpClient'
 import * as HttpClientRequest from '@effect/platform/HttpClientRequest'
 import * as HttpClientError from '@effect/platform/HttpClientError'
@@ -629,13 +629,12 @@ export const sendRaw = <A, Msg>(
     readonly onError: (error: HttpError) => Msg
   }
 ): Cmd<Msg, never, HttpClient.HttpClient> =>
-  pipe(
-    toTaskRaw(req),
-    Effect.match({
-      onSuccess: (a) => Option.some(handlers.onSuccess(a)),
-      onFailure: (error) => Option.some(handlers.onError(error))
+  Stream.fromEffect(
+    Effect.match(toTaskRaw(req), {
+      onSuccess: (a) => handlers.onSuccess(a),
+      onFailure: (error) => handlers.onError(error)
     })
-  ) as Cmd<Msg, never, HttpClient.HttpClient>
+  )
 
 /**
  * Sends an HTTP request and converts it to a Cmd.
@@ -663,13 +662,12 @@ export const send = <A, Msg>(
     readonly onError: (error: HttpError) => Msg
   }
 ): Cmd<Msg, never, HttpRequirements> =>
-  pipe(
-    toTask(req),
-    Effect.match({
-      onSuccess: (a) => Option.some(handlers.onSuccess(a)),
-      onFailure: (error) => Option.some(handlers.onError(error))
+  Stream.fromEffect(
+    Effect.match(toTask(req), {
+      onSuccess: (a) => handlers.onSuccess(a),
+      onFailure: (error) => handlers.onError(error)
     })
-  ) as Cmd<Msg, never, HttpRequirements>
+  )
 
 /**
  * Sends an HTTP request with separate success and error handler functions.

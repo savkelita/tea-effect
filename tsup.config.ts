@@ -11,6 +11,7 @@ export default defineConfig({
     'src/React.ts',
     'src/Navigation.ts',
     'src/Http.ts',
+    'src/LocalStorage.ts',
   ],
   format: ['cjs', 'esm'],
   dts: true,

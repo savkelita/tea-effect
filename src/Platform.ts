@@ -6,7 +6,7 @@
  *
  * @since 0.1.0
  */
-import { Effect, Stream, SubscriptionRef, Queue, Option, Fiber, pipe, Scope } from 'effect'
+import { Effect, Stream, SubscriptionRef, Queue, Fiber, pipe, Scope } from 'effect'
 import { Cmd } from './Cmd'
 import { Sub, none as subNone } from './Sub'
 
@@ -103,23 +103,21 @@ export const program = <Model, Msg, E = never, R = never>(
       Effect.runSync(Queue.offer(msgQueue, msg))
     }
 
-    // Process a command
-    const processCmd = (cmd: Cmd<Msg, E, R>): Effect.Effect<void, E, R> =>
+    // Process a command - run the stream and dispatch messages as they arrive
+    // Commands are forked so they run concurrently (matching Elm's semantics)
+    const processCmd = (cmd: Cmd<Msg, E, R>): Effect.Effect<void, E, R | Scope.Scope> =>
       pipe(
         cmd,
-        Effect.flatMap(optionMsg =>
-          Option.match(optionMsg, {
-            onNone: () => Effect.void,
-            onSome: (msg) => Queue.offer(msgQueue, msg)
-          })
-        )
+        Stream.runForEach(msg => Queue.offer(msgQueue, msg)),
+        Effect.forkScoped,
+        Effect.asVoid
       )
 
     // Process initial command
     yield* processCmd(initialCmd)
 
     // Main update loop - processes messages and updates SubscriptionRef
-    const updateLoop: Effect.Effect<never, E, R> = Effect.forever(
+    const updateLoop: Effect.Effect<never, E, R | Scope.Scope> = Effect.forever(
       Effect.gen(function* () {
         const isShutdown = yield* SubscriptionRef.get(shutdownRef)
         if (isShutdown) {

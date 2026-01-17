@@ -8,7 +8,7 @@
  *
  * @since 0.1.0
  */
-import { Effect, Option, Either, pipe } from 'effect'
+import { Effect, Either, Stream, pipe } from 'effect'
 import { Cmd } from './Cmd'
 
 // -------------------------------------------------------------------------------------
@@ -66,10 +66,7 @@ export const fail = <E>(e: E): Task<never, E> => Effect.fail(e)
  */
 export const perform = <A, Msg>(f: (a: A) => Msg) =>
   <R>(task: Task<A, never, R>): Cmd<Msg, never, R> =>
-    pipe(
-      task,
-      Effect.map(a => Option.some(f(a)))
-    )
+    Stream.fromEffect(Effect.map(task, f))
 
 /**
  * Executes a Task that can fail as a Cmd, mapping both success and failure to a Msg.
@@ -90,10 +87,12 @@ export const perform = <A, Msg>(f: (a: A) => Msg) =>
  */
 export const attempt = <E, A, Msg>(f: (result: Either.Either<A, E>) => Msg) =>
   <R>(task: Task<A, E, R>): Cmd<Msg, never, R> =>
-    pipe(
-      task,
-      Effect.either,
-      Effect.map(either => Option.some(f(either)))
+    Stream.fromEffect(
+      pipe(
+        task,
+        Effect.either,
+        Effect.map(either => f(either))
+      )
     )
 
 /**
