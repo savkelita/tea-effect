@@ -244,15 +244,16 @@ export const view =
 
 ## Module Structure
 
-| Module     | Description                                   |
-| ---------- | --------------------------------------------- |
-| `Cmd`      | Commands - side effects that produce messages |
-| `Sub`      | Subscriptions - streams of external events    |
-| `Task`     | Tasks - convert Effects to Commands           |
-| `Http`     | HTTP requests with Schema validation          |
-| `Platform` | Core TEA program runtime                      |
-| `Html`     | Programs with view rendering                  |
-| `React`    | React integration and hooks                   |
+| Module         | Description                                   |
+| -------------- | --------------------------------------------- |
+| `Cmd`          | Commands - side effects that produce messages |
+| `Sub`          | Subscriptions - streams of external events    |
+| `Task`         | Tasks - convert Effects to Commands           |
+| `Http`         | HTTP requests with Schema validation          |
+| `LocalStorage` | Browser storage with Schema encoding          |
+| `Platform`     | Core TEA program runtime                      |
+| `Html`         | Programs with view rendering                  |
+| `React`        | React integration and hooks                   |
 
 ## Requirements
 
