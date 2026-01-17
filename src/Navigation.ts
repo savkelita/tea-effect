@@ -27,7 +27,7 @@
  *
  * @since 0.3.0
  */
-import { Effect, Option, Stream } from 'effect'
+import { Effect, Stream } from 'effect'
 import type { Cmd } from './Cmd'
 import type { Sub } from './Sub'
 
@@ -134,13 +134,14 @@ export const fromUrl = (url: string): Location => {
  * @category commands
  */
 export const pushUrl = <Msg = never>(url: string): Cmd<Msg> =>
-  Effect.sync(() => {
-    if (typeof window !== 'undefined') {
-      window.history.pushState(null, '', url)
-      window.dispatchEvent(new PopStateEvent('popstate'))
-    }
-    return Option.none()
-  })
+  Stream.execute(
+    Effect.sync(() => {
+      if (typeof window !== 'undefined') {
+        window.history.pushState(null, '', url)
+        window.dispatchEvent(new PopStateEvent('popstate'))
+      }
+    })
+  )
 
 /**
  * Changes the URL but replaces the current entry in browser history.
@@ -157,13 +158,14 @@ export const pushUrl = <Msg = never>(url: string): Cmd<Msg> =>
  * @category commands
  */
 export const replaceUrl = <Msg = never>(url: string): Cmd<Msg> =>
-  Effect.sync(() => {
-    if (typeof window !== 'undefined') {
-      window.history.replaceState(null, '', url)
-      window.dispatchEvent(new PopStateEvent('popstate'))
-    }
-    return Option.none()
-  })
+  Stream.execute(
+    Effect.sync(() => {
+      if (typeof window !== 'undefined') {
+        window.history.replaceState(null, '', url)
+        window.dispatchEvent(new PopStateEvent('popstate'))
+      }
+    })
+  )
 
 /**
  * Goes back a number of pages in browser history.
@@ -181,12 +183,13 @@ export const replaceUrl = <Msg = never>(url: string): Cmd<Msg> =>
  * @category commands
  */
 export const back = <Msg = never>(steps: number = 1): Cmd<Msg> =>
-  Effect.sync(() => {
-    if (typeof window !== 'undefined') {
-      window.history.go(-steps)
-    }
-    return Option.none()
-  })
+  Stream.execute(
+    Effect.sync(() => {
+      if (typeof window !== 'undefined') {
+        window.history.go(-steps)
+      }
+    })
+  )
 
 /**
  * Goes forward a number of pages in browser history.
@@ -204,12 +207,13 @@ export const back = <Msg = never>(steps: number = 1): Cmd<Msg> =>
  * @category commands
  */
 export const forward = <Msg = never>(steps: number = 1): Cmd<Msg> =>
-  Effect.sync(() => {
-    if (typeof window !== 'undefined') {
-      window.history.go(steps)
-    }
-    return Option.none()
-  })
+  Stream.execute(
+    Effect.sync(() => {
+      if (typeof window !== 'undefined') {
+        window.history.go(steps)
+      }
+    })
+  )
 
 /**
  * Leaves the current page and loads the given URL.
@@ -228,12 +232,13 @@ export const forward = <Msg = never>(steps: number = 1): Cmd<Msg> =>
  * @category commands
  */
 export const load = <Msg = never>(url: string): Cmd<Msg> =>
-  Effect.sync(() => {
-    if (typeof window !== 'undefined') {
-      window.location.href = url
-    }
-    return Option.none()
-  })
+  Stream.execute(
+    Effect.sync(() => {
+      if (typeof window !== 'undefined') {
+        window.location.href = url
+      }
+    })
+  )
 
 /**
  * Reloads the current page.
@@ -246,12 +251,13 @@ export const load = <Msg = never>(url: string): Cmd<Msg> =>
  * @since 0.3.0
  * @category commands
  */
-export const reload: Cmd<never> = Effect.sync(() => {
-  if (typeof window !== 'undefined') {
-    window.location.reload()
-  }
-  return Option.none()
-})
+export const reload: Cmd<never> = Stream.execute(
+  Effect.sync(() => {
+    if (typeof window !== 'undefined') {
+      window.location.reload()
+    }
+  })
+)
 
 // -------------------------------------------------------------------------------------
 // subscriptions
