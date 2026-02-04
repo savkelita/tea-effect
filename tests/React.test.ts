@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { Effect, Scope, Stream, pipe } from 'effect'
+import { Effect, Stream } from 'effect'
 import * as TeaReact from '../src/React'
-import * as Html from '../src/Html'
 import * as Cmd from '../src/Cmd'
 import * as Sub from '../src/Sub'
 

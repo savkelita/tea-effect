@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2025-02-04
+
+### Added
+
+- **Navigation** module - Browser history and URL management (Elm-style API)
+  - Inspired by [Elm's Browser.Navigation](https://package.elm-lang.org/packages/elm/browser/latest/Browser-Navigation)
+  - **Model**
+    - `Location` - Browser location (pathname, search, hash, href, origin)
+    - `UrlRequest` - Discriminated union: `Internal` (same origin) | `External` (different origin)
+    - `getLocation()` - Get current browser location (SSR-safe)
+  - **Commands**
+    - `pushUrl(url)` - Navigate and add history entry
+    - `replaceUrl(url)` - Navigate and replace history entry
+    - `back(steps)` - Go back in history
+    - `forward(steps)` - Go forward in history
+    - `load(url)` - Leave app and load external URL
+    - `reload` - Reload current page
+  - **Subscriptions**
+    - `urlChanges(toMsg)` - Subscribe to URL changes (from any source)
+    - `linkClicks(toMsg)` - Intercept `<a>` clicks and emit `UrlRequest`
+      - Distinguishes internal vs external links automatically
+      - Respects modifier keys (Ctrl/Meta for new tab)
+      - Ignores `target="_blank"`, `download`, `mailto:`, `tel:` links
+
 ## [0.4.0] - 2025-01-17
 
 ### Added
@@ -115,6 +139,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Use `dispatchRef` pattern instead of `useMemo` for dispatch stability
   - Simplify setup effect using `Effect.scoped` wrapper
 
+[0.5.0]: https://github.com/savkelita/tea-effect/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/savkelita/tea-effect/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/savkelita/tea-effect/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/savkelita/tea-effect/compare/v0.1.1...v0.2.0
