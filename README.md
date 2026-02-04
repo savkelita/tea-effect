@@ -252,6 +252,7 @@ export const view =
 | `Http`         | HTTP requests with Schema validation          |
 | `LocalStorage` | Browser storage with Schema encoding          |
 | `Navigation`   | Browser history and URL management            |
+| `Router`       | Type-safe URL routing with Schema validation  |
 | `Platform`     | Core TEA program runtime                      |
 | `Html`         | Programs with view rendering                  |
 | `React`        | React integration and hooks                   |

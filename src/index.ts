@@ -13,3 +13,4 @@ export * as React from "./React";
 export * as Http from "./Http";
 export * as LocalStorage from "./LocalStorage";
 export * as Navigation from "./Navigation";
+export * as Router from "./Router";
