@@ -11,54 +11,39 @@
  *
  * ## Key Concepts
  *
+ * - **`program`** - High-level wrapper that automatically wires navigation subscriptions
  * - **`linkClicks`** - Intercepts link clicks, letting you decide how to handle navigation
  * - **`urlChanges`** - Notifies when URL actually changes (from any source)
  * - **`pushUrl`** - Changes URL and adds entry to browser history (back button works)
  * - **`replaceUrl`** - Changes URL but replaces current history entry (no back button entry)
  * - **`load`** - Leaves current page entirely and loads new HTML
  *
- * ## Navigation Flow
+ * ## Using Navigation.program (Recommended)
  *
- * ```
- * [User clicks <a href="/about">]
- *           ↓
- *    linkClicks subscription
- *           ↓
- *  UrlRequest { _tag: 'Internal', location: { pathname: '/about', ... } }
- *           ↓
- *    update function decides: pushUrl? load? prevent?
- *           ↓
- *    urlChanges subscription
- *           ↓
- *  Location { pathname: '/about', ... }
- *           ↓
- *    update function updates route in model
- * ```
- *
- * ## Example
+ * The `program` function is the recommended way to create SPA applications with routing.
+ * It automatically handles navigation subscriptions and passes the initial location to init.
  *
  * ```ts
- * import { Navigation } from 'tea-effect'
- * import type { Cmd, Sub } from 'tea-effect'
+ * import * as Navigation from 'tea-effect/Navigation'
+ * import * as TeaReact from 'tea-effect/React'
  *
- * type Msg =
- *   | { type: 'LinkClicked'; request: Navigation.UrlRequest }
- *   | { type: 'UrlChanged'; location: Navigation.Location }
+ * const App = Navigation.program({
+ *   init: (location) => [{ route: parseRoute(location) }, Cmd.none],
+ *   update,
+ *   view,
+ *   subscriptions: () => Sub.none,
+ *   onUrlRequest: (request) => ({ type: 'LinkClicked', request }),
+ *   onUrlChange: (location) => ({ type: 'UrlChanged', location }),
+ * })
  *
- * const update = (msg: Msg, model: Model): [Model, Cmd.Cmd<Msg>] => {
- *   switch (msg.type) {
- *     case 'LinkClicked':
- *       switch (msg.request._tag) {
- *         case 'Internal':
- *           return [model, Navigation.pushUrl(msg.request.location.pathname)]
- *         case 'External':
- *           return [model, Navigation.load(msg.request.href)]
- *       }
- *     case 'UrlChanged':
- *       return [{ ...model, route: parseRoute(msg.location) }, Cmd.none]
- *   }
- * }
+ * TeaReact.run(App, (element) => root.render(element))
+ * ```
  *
+ * ## Using Low-Level API
+ *
+ * For more control, you can use the individual subscriptions directly:
+ *
+ * ```ts
  * const subscriptions = (): Sub.Sub<Msg> =>
  *   Sub.batch([
  *     Navigation.linkClicks((request) => ({ type: 'LinkClicked', request })),
@@ -66,12 +51,31 @@
  *   ])
  * ```
  *
+ * ## Navigation Flow
+ *
+ * ```
+ * [User clicks <a href="/about">]
+ *           ↓
+ *    linkClicks / onUrlRequest
+ *           ↓
+ *  UrlRequest { _tag: 'Internal', location: { pathname: '/about', ... } }
+ *           ↓
+ *    update function decides: pushUrl? load? prevent?
+ *           ↓
+ *    urlChanges / onUrlChange
+ *           ↓
+ *  Location { pathname: '/about', ... }
+ *           ↓
+ *    update function updates route in model
+ * ```
+ *
  * @since 0.5.0
  * @see {@link https://package.elm-lang.org/packages/elm/browser/latest/Browser-Navigation Elm's Browser.Navigation}
  */
-import { Effect, Stream } from 'effect'
+import { Effect, Stream, Scope } from 'effect'
 import type { Cmd } from './Cmd'
-import type { Sub } from './Sub'
+import { batch as subBatch, none as subNone, Sub } from './Sub'
+import * as Html from './Html'
 
 // -------------------------------------------------------------------------------------
 // Model
@@ -493,4 +497,140 @@ export const linkClicks = <Msg>(toMsg: (request: UrlRequest) => Msg): Sub<Msg> =
       window.removeEventListener('click', handler, true)
     })
   })
+
+// -------------------------------------------------------------------------------------
+// Program
+// -------------------------------------------------------------------------------------
+
+/**
+ * Configuration for Navigation.program
+ *
+ * @since 0.5.0
+ * @category Program
+ */
+export interface ProgramConfig<Model, Msg, Dom, E = never, R = never> {
+  /**
+   * Initialize the application with the current browser location.
+   * Called once when the program starts.
+   */
+  readonly init: (location: Location) => readonly [Model, Cmd<Msg, E, R>]
+
+  /**
+   * Handle messages and return new model + commands.
+   */
+  readonly update: (msg: Msg, model: Model) => readonly [Model, Cmd<Msg, E, R>]
+
+  /**
+   * Render the model to DOM.
+   */
+  readonly view: (model: Model) => Html.Html<Dom, Msg>
+
+  /**
+   * Additional subscriptions (besides navigation).
+   * Navigation subscriptions are automatically included.
+   */
+  readonly subscriptions?: (model: Model) => Sub<Msg, E, R>
+
+  /**
+   * Handle link clicks.
+   * Receives a UrlRequest which is either Internal (same origin) or External.
+   */
+  readonly onUrlRequest: (request: UrlRequest) => Msg
+
+  /**
+   * Handle URL changes.
+   * Called when the URL changes from any source (pushUrl, back/forward, etc.)
+   */
+  readonly onUrlChange: (location: Location) => Msg
+}
+
+/**
+ * Creates a navigation-enabled program (like Elm's Browser.application).
+ *
+ * This is the recommended way to create SPA applications with routing.
+ * It automatically:
+ * - Passes the initial location to your `init` function
+ * - Subscribes to link clicks and URL changes
+ * - Batches navigation subscriptions with your custom subscriptions
+ *
+ * @example
+ * ```ts
+ * import * as Navigation from 'tea-effect/Navigation'
+ * import * as TeaReact from 'tea-effect/React'
+ * import * as Cmd from 'tea-effect/Cmd'
+ * import * as Sub from 'tea-effect/Sub'
+ *
+ * type Route = 'home' | 'about' | 'contact' | 'not-found'
+ *
+ * type Model = { route: Route }
+ *
+ * type Msg =
+ *   | { type: 'LinkClicked'; request: Navigation.UrlRequest }
+ *   | { type: 'UrlChanged'; location: Navigation.Location }
+ *
+ * const parseRoute = (location: Navigation.Location): Route => {
+ *   switch (location.pathname) {
+ *     case '/': return 'home'
+ *     case '/about': return 'about'
+ *     case '/contact': return 'contact'
+ *     default: return 'not-found'
+ *   }
+ * }
+ *
+ * const update = (msg: Msg, model: Model): [Model, Cmd.Cmd<Msg>] => {
+ *   switch (msg.type) {
+ *     case 'LinkClicked':
+ *       switch (msg.request._tag) {
+ *         case 'Internal':
+ *           return [model, Navigation.pushUrl(msg.request.location.pathname)]
+ *         case 'External':
+ *           return [model, Navigation.load(msg.request.href)]
+ *       }
+ *     case 'UrlChanged':
+ *       return [{ ...model, route: parseRoute(msg.location) }, Cmd.none]
+ *   }
+ * }
+ *
+ * const App = Navigation.program({
+ *   init: (location) => [{ route: parseRoute(location) }, Cmd.none],
+ *   update,
+ *   view,
+ *   subscriptions: () => Sub.none,
+ *   onUrlRequest: (request) => ({ type: 'LinkClicked', request }),
+ *   onUrlChange: (location) => ({ type: 'UrlChanged', location }),
+ * })
+ *
+ * // Run with React
+ * TeaReact.run(App, (element) => root.render(element))
+ * ```
+ *
+ * @since 0.5.0
+ * @category Program
+ */
+export const program = <Model, Msg, Dom, E = never, R = never>(
+  config: ProgramConfig<Model, Msg, Dom, E, R>
+): Effect.Effect<Html.Program<Model, Msg, Dom, E, R>, E, R | Scope.Scope> => {
+  const {
+    init,
+    update,
+    view,
+    subscriptions = () => subNone,
+    onUrlRequest,
+    onUrlChange
+  } = config
+
+  // Get initial location and create init tuple
+  const initialLocation = getLocation()
+  const initTuple = init(initialLocation)
+
+  // Create combined subscriptions that include navigation
+  const combinedSubscriptions = (model: Model): Sub<Msg, E, R> =>
+    subBatch([
+      subscriptions(model),
+      linkClicks(onUrlRequest) as Sub<Msg, E, R>,
+      urlChanges(onUrlChange) as Sub<Msg, E, R>
+    ])
+
+  return Html.program(initTuple, update, view, combinedSubscriptions)
+}
 

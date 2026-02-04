@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2025-02-04
+
+### Added
+
+- **Navigation** module - `program` function (like Elm's Browser.application)
+  - `program(config)` - Create navigation-enabled program
+    - Automatically passes initial location to `init`
+    - Automatically subscribes to `linkClicks` and `urlChanges`
+    - Batches navigation subscriptions with custom subscriptions
+  - `ProgramConfig` interface for type-safe configuration
+
 ## [0.5.0] - 2025-02-04
 
 ### Added
@@ -139,6 +150,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Use `dispatchRef` pattern instead of `useMemo` for dispatch stability
   - Simplify setup effect using `Effect.scoped` wrapper
 
+[0.5.1]: https://github.com/savkelita/tea-effect/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/savkelita/tea-effect/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/savkelita/tea-effect/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/savkelita/tea-effect/compare/v0.2.0...v0.3.0
