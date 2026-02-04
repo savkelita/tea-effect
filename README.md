@@ -251,6 +251,7 @@ export const view =
 | `Task`         | Tasks - convert Effects to Commands           |
 | `Http`         | HTTP requests with Schema validation          |
 | `LocalStorage` | Browser storage with Schema encoding          |
+| `Navigation`   | Browser history and URL management            |
 | `Platform`     | Core TEA program runtime                      |
 | `Html`         | Programs with view rendering                  |
 | `React`        | React integration and hooks                   |
