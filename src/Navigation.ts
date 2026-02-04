@@ -334,8 +334,8 @@ export const reload: Cmd<never> = Stream.execute(
  * - Browser back/forward buttons
  * - Direct URL manipulation
  *
- * The subscription automatically emits the current location when first subscribed,
- * so your application always starts with the correct route.
+ * **Note:** This subscription does NOT emit the initial location.
+ * Use `getLocation()` in your `init` function to get the starting route.
  *
  * @example
  * ```ts
@@ -360,9 +360,6 @@ export const urlChanges = <Msg>(toMsg: (location: Location) => Msg): Sub<Msg> =>
     const handler = () => {
       emit.single(toMsg(getLocation()))
     }
-
-    // Emit initial location immediately
-    handler()
 
     // Listen for popstate events (back/forward navigation and programmatic changes)
     window.addEventListener('popstate', handler)
