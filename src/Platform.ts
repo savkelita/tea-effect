@@ -18,7 +18,7 @@ import { Sub, none as subNone } from './Sub'
  * A Dispatch function sends messages to the update loop.
  *
  * @since 0.1.0
- * @category model
+ * @category Model
  */
 export type Dispatch<Msg> = (msg: Msg) => void
 
@@ -31,7 +31,7 @@ export type Dispatch<Msg> = (msg: Msg) => void
  * - `shutdown`: effect to stop the program
  *
  * @since 0.1.0
- * @category model
+ * @category Model
  */
 export interface Program<Model, Msg, E = never, R = never> {
   /**
@@ -81,7 +81,7 @@ export interface Program<Model, Msg, E = never, R = never> {
  * ```
  *
  * @since 0.1.0
- * @category constructors
+ * @category Constructors
  */
 export const program = <Model, Msg, E = never, R = never>(
   init: readonly [Model, Cmd<Msg, E, R>],
@@ -170,7 +170,7 @@ export const program = <Model, Msg, E = never, R = never>(
  * Creates a Program with initial flags.
  *
  * @since 0.1.0
- * @category constructors
+ * @category Constructors
  */
 export const programWithFlags = <Flags, Model, Msg, E = never, R = never>(
   init: (flags: Flags) => readonly [Model, Cmd<Msg, E, R>],
@@ -187,7 +187,7 @@ export const programWithFlags = <Flags, Model, Msg, E = never, R = never>(
  * Runs the program and returns a stream of model updates.
  *
  * @since 0.1.0
- * @category running
+ * @category Running
  */
 export const run = <Model, Msg, E, R>(
   prog: Program<Model, Msg, E, R>
@@ -197,7 +197,7 @@ export const run = <Model, Msg, E, R>(
  * Runs the program with a subscriber that receives model updates.
  *
  * @since 0.1.0
- * @category running
+ * @category Running
  */
 export const runWith = <Model, Msg, E, R>(
   onModel: (model: Model) => void

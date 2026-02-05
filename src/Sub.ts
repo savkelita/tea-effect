@@ -20,7 +20,7 @@ import { Stream, pipe, Effect, Schedule } from 'effect'
  * - `R` - the required dependencies (defaults to `never`)
  *
  * @since 0.1.0
- * @category model
+ * @category Model
  */
 export type Sub<Msg, E = never, R = never> = Stream.Stream<Msg, E, R>
 
@@ -32,7 +32,7 @@ export type Sub<Msg, E = never, R = never> = Stream.Stream<Msg, E, R>
  * A subscription that produces no messages.
  *
  * @since 0.1.0
- * @category constructors
+ * @category Constructors
  */
 export const none: Sub<never> = Stream.empty
 
@@ -40,7 +40,7 @@ export const none: Sub<never> = Stream.empty
  * Creates a subscription from a single message.
  *
  * @since 0.1.0
- * @category constructors
+ * @category Constructors
  */
 export const of = <Msg>(msg: Msg): Sub<Msg> => Stream.succeed(msg)
 
@@ -48,7 +48,7 @@ export const of = <Msg>(msg: Msg): Sub<Msg> => Stream.succeed(msg)
  * Creates a subscription from an iterable of messages.
  *
  * @since 0.1.0
- * @category constructors
+ * @category Constructors
  */
 export const fromIterable = <Msg>(msgs: Iterable<Msg>): Sub<Msg> => Stream.fromIterable(msgs)
 
@@ -56,7 +56,7 @@ export const fromIterable = <Msg>(msgs: Iterable<Msg>): Sub<Msg> => Stream.fromI
  * Creates a subscription that emits a message at regular intervals.
  *
  * @since 0.1.0
- * @category constructors
+ * @category Constructors
  */
 export const interval = <Msg>(ms: number, msg: Msg): Sub<Msg> =>
   pipe(
@@ -68,7 +68,7 @@ export const interval = <Msg>(ms: number, msg: Msg): Sub<Msg> =>
  * Creates a subscription from a callback-based event source.
  *
  * @since 0.1.0
- * @category constructors
+ * @category Constructors
  */
 export const fromCallback = <Msg>(
   register: (emit: (msg: Msg) => void) => () => void
@@ -88,7 +88,7 @@ export const fromCallback = <Msg>(
  * Maps the messages of a subscription into another message type.
  *
  * @since 0.1.0
- * @category combinators
+ * @category Combinators
  */
 export const map =
   <A, Msg>(f: (a: A) => Msg) =>
@@ -100,7 +100,7 @@ export const map =
  * Messages from all subscriptions are merged.
  *
  * @since 0.1.0
- * @category combinators
+ * @category Combinators
  */
 export const batch = <Msg, E, R>(subs: ReadonlyArray<Sub<Msg, E, R>>): Sub<Msg, E, R> => {
   if (subs.length === 0) {
@@ -118,7 +118,7 @@ export const batch = <Msg, E, R>(subs: ReadonlyArray<Sub<Msg, E, R>>): Sub<Msg, 
  * Filters messages from a subscription.
  *
  * @since 0.1.0
- * @category combinators
+ * @category Combinators
  */
 export const filter =
   <Msg>(predicate: (msg: Msg) => boolean) =>

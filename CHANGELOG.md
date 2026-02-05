@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2025-02-04
+
+### Added
+
+- **Router** module - Type-safe URL routing with Schema validation
+  - Inspired by [fp-ts-routing](https://github.com/gcanti/fp-ts-routing) and [Elm's Url.Parser](https://package.elm-lang.org/packages/elm/url/latest/Url-Parser)
+  - **Route definition**
+    - `path(pattern, schemas?)` - Define route from path pattern with `:paramName` syntax
+    - `routes(definitions)` - Create routes collection with automatic tagging
+  - **Parsing**
+    - `parse(routes, location)` - Parse location into typed route (returns `Option`)
+    - `parseOr(routes, location, default)` - Parse with fallback value
+  - **Formatting**
+    - `format(route, params)` - Format route definition to URL string
+  - **Type utilities**
+    - `RouteType<T>` - Infer union type of all routes
+    - `RouteParams<T>` - Extract params type
+    - `RouteQuery<T>` - Extract query type
+    - `FormatParams<T>` - Extract format params (params + query)
+  - **Low-level combinators**
+    - `lit(segment)` - Match literal path segment
+    - `str(key)` - Capture string path segment
+    - `int(key)` - Capture integer path segment
+    - `param(key, schema)` - Capture segment with Schema validation
+    - `query(schema)` - Match query parameters with Schema
+    - `end` - Match end of path
+    - `seq(a, b)` - Sequence two matchers
+  - **Sub-modules**
+    - `Router.Route` - Route class (segments + query)
+    - `Router.Parser` - Parser combinators
+    - `Router.Formatter` - URL formatting
+    - `Router.Matcher` - Bidirectional matchers
+
 ## [0.5.1] - 2025-02-04
 
 ### Added
@@ -150,6 +183,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Use `dispatchRef` pattern instead of `useMemo` for dispatch stability
   - Simplify setup effect using `Effect.scoped` wrapper
 
+[0.6.0]: https://github.com/savkelita/tea-effect/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/savkelita/tea-effect/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/savkelita/tea-effect/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/savkelita/tea-effect/compare/v0.3.0...v0.4.0

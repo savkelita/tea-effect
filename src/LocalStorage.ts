@@ -20,7 +20,7 @@ import * as Sub from './Sub'
  * Error that can occur during localStorage operations.
  *
  * @since 0.3.0
- * @category model
+ * @category Model
  */
 export type LocalStorageError =
   | { readonly _tag: 'StorageNotAvailable' }
@@ -33,7 +33,7 @@ export type LocalStorageError =
  * Constructs a StorageNotAvailable error.
  *
  * @since 0.3.0
- * @category constructors
+ * @category Constructors
  */
 export const storageNotAvailable: LocalStorageError = { _tag: 'StorageNotAvailable' }
 
@@ -41,7 +41,7 @@ export const storageNotAvailable: LocalStorageError = { _tag: 'StorageNotAvailab
  * Constructs a QuotaExceeded error.
  *
  * @since 0.3.0
- * @category constructors
+ * @category Constructors
  */
 export const quotaExceeded = (key: string): LocalStorageError => ({ _tag: 'QuotaExceeded', key })
 
@@ -49,7 +49,7 @@ export const quotaExceeded = (key: string): LocalStorageError => ({ _tag: 'Quota
  * Constructs a JsonParseError.
  *
  * @since 0.3.0
- * @category constructors
+ * @category Constructors
  */
 export const jsonParseError = (key: string, error: unknown): LocalStorageError => ({
   _tag: 'JsonParseError',
@@ -61,7 +61,7 @@ export const jsonParseError = (key: string, error: unknown): LocalStorageError =
  * Constructs a DecodeError.
  *
  * @since 0.3.0
- * @category constructors
+ * @category Constructors
  */
 export const decodeError = (key: string, error: ParseResult.ParseError): LocalStorageError => ({
   _tag: 'DecodeError',
@@ -73,7 +73,7 @@ export const decodeError = (key: string, error: ParseResult.ParseError): LocalSt
  * Constructs an EncodeError.
  *
  * @since 0.3.0
- * @category constructors
+ * @category Constructors
  */
 export const encodeError = (key: string, error: ParseResult.ParseError): LocalStorageError => ({
   _tag: 'EncodeError',
@@ -108,7 +108,7 @@ const getStorage = (): Effect.Effect<Storage, LocalStorageError> =>
  * For normal usage, prefer `get` with handlers.
  *
  * @since 0.4.0
- * @category tasks
+ * @category Tasks
  */
 export const getTask = <A, I>(
   key: string,
@@ -141,7 +141,7 @@ export const getTask = <A, I>(
  * For normal usage, prefer `set` with handlers.
  *
  * @since 0.4.0
- * @category tasks
+ * @category Tasks
  */
 export const setTask = <A, I>(
   key: string,
@@ -168,7 +168,7 @@ export const setTask = <A, I>(
  * Task that removes an item from localStorage.
  *
  * @since 0.4.0
- * @category tasks
+ * @category Tasks
  */
 export const removeTask = (key: string): Effect.Effect<void, LocalStorageError> =>
   Effect.gen(function* () {
@@ -180,7 +180,7 @@ export const removeTask = (key: string): Effect.Effect<void, LocalStorageError> 
  * Task that clears all items from localStorage.
  *
  * @since 0.4.0
- * @category tasks
+ * @category Tasks
  */
 export const clearTask: Effect.Effect<void, LocalStorageError> =
   Effect.gen(function* () {
@@ -192,7 +192,7 @@ export const clearTask: Effect.Effect<void, LocalStorageError> =
  * Task that gets all keys currently in localStorage.
  *
  * @since 0.4.0
- * @category tasks
+ * @category Tasks
  */
 export const keysTask: Effect.Effect<ReadonlyArray<string>, LocalStorageError> =
   Effect.gen(function* () {
@@ -218,7 +218,7 @@ export const keysTask: Effect.Effect<ReadonlyArray<string>, LocalStorageError> =
  * Follows the same pattern as `Http.send` with onSuccess/onError handlers.
  *
  * @since 0.4.0
- * @category commands
+ * @category Commands
  * @example
  * ```ts
  * const Counter = Schema.Struct({ count: Schema.Number })
@@ -250,7 +250,7 @@ export const get = <A, I, Msg>(
  * Follows the same pattern as `Http.send` with onSuccess/onError handlers.
  *
  * @since 0.4.0
- * @category commands
+ * @category Commands
  * @example
  * ```ts
  * const Counter = Schema.Struct({ count: Schema.Number })
@@ -282,7 +282,7 @@ export const set = <A, I, Msg>(
  * Errors are silently ignored - use this for fire-and-forget operations.
  *
  * @since 0.4.0
- * @category commands
+ * @category Commands
  * @example
  * ```ts
  * // Fire and forget - no message produced
@@ -300,7 +300,7 @@ export const setIgnoreErrors = <A, I>(
  * Removes an item from localStorage.
  *
  * @since 0.4.0
- * @category commands
+ * @category Commands
  */
 export const remove = <Msg>(
   key: string,
@@ -320,7 +320,7 @@ export const remove = <Msg>(
  * Removes an item from localStorage without requiring error handling.
  *
  * @since 0.4.0
- * @category commands
+ * @category Commands
  */
 export const removeIgnoreErrors = (key: string): Cmd<never> =>
   Stream.execute(Effect.ignore(removeTask(key)))
@@ -329,7 +329,7 @@ export const removeIgnoreErrors = (key: string): Cmd<never> =>
  * Clears all items from localStorage.
  *
  * @since 0.4.0
- * @category commands
+ * @category Commands
  */
 export const clear = <Msg>(handlers: {
   readonly onSuccess: () => Msg
@@ -346,7 +346,7 @@ export const clear = <Msg>(handlers: {
  * Gets all keys currently in localStorage.
  *
  * @since 0.4.0
- * @category commands
+ * @category Commands
  */
 export const keys = <Msg>(handlers: {
   readonly onSuccess: (keys: ReadonlyArray<string>) => Msg
@@ -370,7 +370,7 @@ export const keys = <Msg>(handlers: {
  * (i.e., another tab or window). Changes made in the current document do not trigger this event.
  *
  * @since 0.3.0
- * @category subscriptions
+ * @category Subscriptions
  * @example
  * ```ts
  * const Counter = Schema.Struct({ count: Schema.Number })
@@ -427,7 +427,7 @@ export const onChange = <A, I, Msg>(
  * Subscribes to raw string changes for a specific key from OTHER browser tabs/windows.
  *
  * @since 0.3.0
- * @category subscriptions
+ * @category Subscriptions
  */
 export const onChangeRaw = <Msg>(
   key: string,
@@ -447,7 +447,7 @@ export const onChangeRaw = <Msg>(
  * Subscribes to ALL storage changes from OTHER browser tabs/windows.
  *
  * @since 0.3.0
- * @category subscriptions
+ * @category Subscriptions
  */
 export const onAnyChange = <Msg>(
   toMsg: (event: { key: Option.Option<string>; newValue: Option.Option<string>; oldValue: Option.Option<string> }) => Msg

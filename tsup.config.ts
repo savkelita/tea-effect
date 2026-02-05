@@ -12,6 +12,7 @@ export default defineConfig({
     'src/Navigation.ts',
     'src/Http.ts',
     'src/LocalStorage.ts',
+    'src/Router.ts',
   ],
   format: ['cjs', 'esm'],
   dts: true,
