@@ -232,12 +232,26 @@ function extractParamKeys(pattern: string): string[] {
 /**
  * Extract property keys from a Schema (works for Schema.Struct).
  *
+ * NOTE: This relies on Effect's current Schema AST representation,
+ * specifically that `schema.ast` is a TypeLiteral with `propertySignatures`.
+ * If the Effect Schema internals change, this function may need updating.
+ *
  * @internal
  */
 function getSchemaKeys(schema: Schema.Schema<any, any, never>): string[] | undefined {
-  const ast = schema.ast as any
-  if (ast._tag === 'TypeLiteral' && Array.isArray(ast.propertySignatures)) {
-    return ast.propertySignatures.map((ps: any) => String(ps.name))
+  const ast = schema.ast as unknown
+  if (
+    typeof ast === 'object' &&
+    ast !== null &&
+    '_tag' in ast &&
+    (ast as { _tag: unknown })._tag === 'TypeLiteral' &&
+    'propertySignatures' in ast &&
+    Array.isArray((ast as { propertySignatures: unknown }).propertySignatures)
+  ) {
+    const propertySignatures = (ast as {
+      propertySignatures: Array<{ name: PropertyKey }>
+    }).propertySignatures
+    return propertySignatures.map(ps => String(ps.name))
   }
   return undefined
 }
