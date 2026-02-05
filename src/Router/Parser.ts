@@ -209,7 +209,7 @@ export const query = <A, I>(
  *
  * @example
  * ```ts
- * const parser = pipe(lit('users'), zip(end))
+ * const parser = zip(lit('users'), end)
  * // Matches: /users
  * // Fails: /users/123
  * ```
