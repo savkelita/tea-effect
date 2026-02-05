@@ -194,7 +194,7 @@ export const root: Matcher<{}> = end
  * @since 0.6.0
  * @category Combinators
  */
-export const seq = <A, B>(ma: Matcher<A>, mb: Matcher<B>): Matcher<A & B> => {
+export const seq = <A extends Record<string, unknown>, B extends Record<string, unknown>>(ma: Matcher<A>, mb: Matcher<B>): Matcher<A & B> => {
   const parser = Parser.zip(ma.parser, mb.parser)
   const formatter = Formatter.combine(ma.formatter, mb.formatter)
   return { parser, formatter }
@@ -207,7 +207,7 @@ export const seq = <A, B>(ma: Matcher<A>, mb: Matcher<B>): Matcher<A & B> => {
  * @since 0.6.0
  * @category Combinators
  */
-export const pipe = <T extends Matcher<any>[]>(
+export const pipe = <T extends Matcher<Record<string, unknown>>[]>(
   ...matchers: T
 ): Matcher<UnionToIntersection<MatcherValue<T[number]>>> => {
   const parser = Parser.zipAll(...matchers.map((m) => m.parser)) as any

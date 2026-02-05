@@ -275,7 +275,7 @@ export const flatMap = <A, B>(
  * @since 0.6.0
  * @category Combinators
  */
-export const zip = <A, B>(pa: Parser<A>, pb: Parser<B>): Parser<A & B> => ({
+export const zip = <A extends Record<string, unknown>, B extends Record<string, unknown>>(pa: Parser<A>, pb: Parser<B>): Parser<A & B> => ({
   parse: (route) =>
     Option.flatMap(pa.parse(route), ([a, rest]) =>
       Option.map(pb.parse(rest), ([b, rest2]) => [{ ...a, ...b } as A & B, rest2] as const)
@@ -288,7 +288,7 @@ export const zip = <A, B>(pa: Parser<A>, pb: Parser<B>): Parser<A & B> => ({
  * @since 0.6.0
  * @category Combinators
  */
-export const zipAll = <T extends Parser<any>[]>(
+export const zipAll = <T extends Parser<Record<string, unknown>>[]>(
   ...parsers: T
 ): Parser<UnionToIntersection<ParserValue<T[number]>>> => ({
   parse: (route) => {

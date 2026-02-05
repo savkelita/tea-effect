@@ -156,7 +156,7 @@ export const end: Formatter<{}> = empty
  * @since 0.6.0
  * @category Combinators
  */
-export const combine = <A, B>(fa: Formatter<A>, fb: Formatter<B>): Formatter<A & B> => ({
+export const combine = <A extends Record<string, unknown>, B extends Record<string, unknown>>(fa: Formatter<A>, fb: Formatter<B>): Formatter<A & B> => ({
   format: (params) => {
     const routeA = fa.format(params as A)
     const routeB = fb.format(params as B)
@@ -177,7 +177,7 @@ export const combine = <A, B>(fa: Formatter<A>, fb: Formatter<B>): Formatter<A &
  * @since 0.6.0
  * @category Combinators
  */
-export const combineAll = <T extends Formatter<any>[]>(
+export const combineAll = <T extends Formatter<Record<string, unknown>>[]>(
   ...formatters: T
 ): Formatter<UnionToIntersection<FormatterValue<T[number]>>> => ({
   format: (params) => {
