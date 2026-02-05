@@ -19,7 +19,7 @@ import * as Platform from './Platform'
  * This allows tea-effect to work with any React version without type conflicts.
  *
  * @since 0.1.1
- * @category model
+ * @category Model
  */
 export interface ReactLike {
   useState<S>(initialState: S | (() => S)): [S, (value: S | ((prev: S) => S)) => void]
@@ -35,7 +35,7 @@ export interface ReactLike {
  * Dom type for React elements.
  *
  * @since 0.1.0
- * @category model
+ * @category Model
  */
 export type Dom = ReactTypes.ReactElement | null
 
@@ -43,7 +43,7 @@ export type Dom = ReactTypes.ReactElement | null
  * Html type for React - a function that takes dispatch and returns React element.
  *
  * @since 0.1.0
- * @category model
+ * @category Model
  */
 export type Html<Msg> = HtmlModule.Html<Dom, Msg>
 
@@ -51,7 +51,7 @@ export type Html<Msg> = HtmlModule.Html<Dom, Msg>
  * React Program type.
  *
  * @since 0.1.0
- * @category model
+ * @category Model
  */
 export type Program<Model, Msg, E = never, R = never> = HtmlModule.Program<Model, Msg, Dom, E, R>
 
@@ -63,7 +63,7 @@ export type Program<Model, Msg, E = never, R = never> = HtmlModule.Program<Model
  * Creates a React Program.
  *
  * @since 0.1.0
- * @category constructors
+ * @category Constructors
  */
 export const program = <Model, Msg, E = never, R = never>(
   init: readonly [Model, Cmd<Msg, E, R>],
@@ -77,7 +77,7 @@ export const program = <Model, Msg, E = never, R = never>(
  * Creates a React Program with flags.
  *
  * @since 0.1.0
- * @category constructors
+ * @category Constructors
  */
 export const programWithFlags = <Flags, Model, Msg, E = never, R = never>(
   init: (flags: Flags) => readonly [Model, Cmd<Msg, E, R>],
@@ -106,7 +106,7 @@ export const programWithFlags = <Flags, Model, Msg, E = never, R = never>(
  * ```
  *
  * @since 0.1.0
- * @category running
+ * @category Running
  */
 export const run = <Model, Msg, E, R>(
   programEffect: Effect.Effect<Program<Model, Msg, E, R>, E, R | Scope.Scope>,
@@ -127,7 +127,7 @@ export const run = <Model, Msg, E, R>(
  * Options for useProgram hook.
  *
  * @since 0.1.0
- * @category hooks
+ * @category Hooks
  */
 export interface UseProgramOptions<R> {
   /**
@@ -141,7 +141,7 @@ export interface UseProgramOptions<R> {
  * Result of useProgram hook.
  *
  * @since 0.1.0
- * @category hooks
+ * @category Hooks
  */
 export interface UseProgramResult<Model, Msg> {
   /**
@@ -188,7 +188,7 @@ export interface UseProgramResult<Model, Msg> {
  * ```
  *
  * @since 0.1.0
- * @category hooks
+ * @category Hooks
  */
 export const makeUseProgram = (React: ReactLike) => {
   const { useState, useEffect, useRef } = React
@@ -250,7 +250,7 @@ export const makeUseProgram = (React: ReactLike) => {
  * Creates a useProgram hook with dependencies (Layer).
  *
  * @since 0.1.0
- * @category hooks
+ * @category Hooks
  */
 export const makeUseProgramWithLayer = (React: ReactLike) => {
   const baseUseProgram = makeUseProgram(React)

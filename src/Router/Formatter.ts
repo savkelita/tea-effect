@@ -99,7 +99,7 @@ export const param = <K extends string, A>(
  * Format query parameters from an object.
  *
  * Handles both single values and arrays (repeated query params).
- * Undefined values are omitted.
+ * Undefined and null values are omitted.
  *
  * @example
  * ```ts

@@ -27,7 +27,7 @@ import { Effect, Stream, pipe } from 'effect'
  * - `R` - the required dependencies (defaults to `never` for commands with no dependencies)
  *
  * @since 0.1.0
- * @category model
+ * @category Model
  */
 export type Cmd<Msg, E = never, R = never> = Stream.Stream<Msg, E, R>
 
@@ -39,7 +39,7 @@ export type Cmd<Msg, E = never, R = never> = Stream.Stream<Msg, E, R>
  * A command that does nothing.
  *
  * @since 0.1.0
- * @category constructors
+ * @category Constructors
  */
 export const none: Cmd<never> = Stream.empty
 
@@ -47,7 +47,7 @@ export const none: Cmd<never> = Stream.empty
  * Creates a command that carries the provided message.
  *
  * @since 0.1.0
- * @category constructors
+ * @category Constructors
  */
 export const of = <Msg>(msg: Msg): Cmd<Msg> => Stream.make(msg)
 
@@ -55,7 +55,7 @@ export const of = <Msg>(msg: Msg): Cmd<Msg> => Stream.make(msg)
  * Creates a command from an Effect that produces a single message.
  *
  * @since 0.1.0
- * @category constructors
+ * @category Constructors
  */
 export const fromEffect = <Msg, E, R>(effect: Effect.Effect<Msg, E, R>): Cmd<Msg, E, R> =>
   Stream.fromEffect(effect)
@@ -68,7 +68,7 @@ export const fromEffect = <Msg, E, R>(effect: Effect.Effect<Msg, E, R>): Cmd<Msg
  * Maps the carried messages of a command into another message type.
  *
  * @since 0.1.0
- * @category combinators
+ * @category Combinators
  */
 export const map =
   <A, Msg>(f: (a: A) => Msg) =>
@@ -86,7 +86,7 @@ export const map =
  * there are no ordering guarantees about the results."
  *
  * @since 0.1.0
- * @category combinators
+ * @category Combinators
  */
 export const batch = <Msg, E, R>(cmds: ReadonlyArray<Cmd<Msg, E, R>>): Cmd<Msg, E, R> => {
   if (cmds.length === 0) {

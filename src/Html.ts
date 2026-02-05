@@ -20,7 +20,7 @@ import * as Platform from './Platform'
  * This is generic over the Dom type to support both React and other renderers.
  *
  * @since 0.1.0
- * @category model
+ * @category Model
  */
 export type Html<Dom, Msg> = (dispatch: Platform.Dispatch<Msg>) => Dom
 
@@ -28,7 +28,7 @@ export type Html<Dom, Msg> = (dispatch: Platform.Dispatch<Msg>) => Dom
  * Program with a view function.
  *
  * @since 0.1.0
- * @category model
+ * @category Model
  */
 export interface Program<Model, Msg, Dom, E = never, R = never> extends Platform.Program<Model, Msg, E, R> {
   /**
@@ -68,7 +68,7 @@ export interface Program<Model, Msg, Dom, E = never, R = never> extends Platform
  * ```
  *
  * @since 0.1.0
- * @category constructors
+ * @category Constructors
  */
 export const program = <Model, Msg, Dom, E = never, R = never>(
   init: readonly [Model, Cmd<Msg, E, R>],
@@ -94,7 +94,7 @@ export const program = <Model, Msg, Dom, E = never, R = never>(
  * Creates a Program with flags and a view function.
  *
  * @since 0.1.0
- * @category constructors
+ * @category Constructors
  */
 export const programWithFlags = <Flags, Model, Msg, Dom, E = never, R = never>(
   init: (flags: Flags) => readonly [Model, Cmd<Msg, E, R>],
@@ -112,7 +112,7 @@ export const programWithFlags = <Flags, Model, Msg, Dom, E = never, R = never>(
  * Maps the Dom type of an Html.
  *
  * @since 0.1.0
- * @category combinators
+ * @category Combinators
  */
 export const map = <A, Msg>(f: (a: A) => Msg) =>
   <Dom>(html: Html<Dom, A>): Html<Dom, Msg> =>
@@ -126,7 +126,7 @@ export const map = <A, Msg>(f: (a: A) => Msg) =>
  * Runs the program and returns a stream of rendered views.
  *
  * @since 0.1.0
- * @category running
+ * @category Running
  */
 export const run = <Model, Msg, Dom, E, R>(
   prog: Program<Model, Msg, Dom, E, R>
@@ -136,7 +136,7 @@ export const run = <Model, Msg, Dom, E, R>(
  * Runs the program with a renderer callback.
  *
  * @since 0.1.0
- * @category running
+ * @category Running
  */
 export const runWith = <Model, Msg, Dom, E, R>(
   renderer: (dom: Dom) => void

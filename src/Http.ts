@@ -41,7 +41,7 @@ import type { Task } from './Task'
  * Note: FetchHttpClient is automatically provided by the library.
  *
  * @since 0.2.0
- * @category model
+ * @category Model
  */
 export type HttpRequirements = never
 
@@ -53,7 +53,7 @@ export type HttpRequirements = never
  * HTTP error types similar to Elm's Http.Error
  *
  * @since 0.2.0
- * @category model
+ * @category Model
  */
 export type HttpError =
   | { readonly _tag: 'BadUrl'; readonly url: string }
@@ -66,7 +66,7 @@ export type HttpError =
  * HTTP method type
  *
  * @since 0.2.0
- * @category model
+ * @category Model
  */
 export type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS'
 
@@ -74,7 +74,7 @@ export type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPT
  * HTTP header
  *
  * @since 0.2.0
- * @category model
+ * @category Model
  */
 export interface Header {
   readonly name: string
@@ -86,7 +86,7 @@ export interface Header {
  * Contains a Schema decoder for the expected response type.
  *
  * @since 0.2.0
- * @category model
+ * @category Model
  */
 export interface Expect<A> {
   readonly _tag: 'ExpectJson'
@@ -97,7 +97,7 @@ export interface Expect<A> {
  * Request body with optional Schema encoder for runtime validation.
  *
  * @since 0.2.0
- * @category model
+ * @category Model
  */
 export type Body =
   | { readonly _tag: 'EmptyBody' }
@@ -108,7 +108,7 @@ export type Body =
  * Describes what to fetch, not how to handle the result.
  *
  * @since 0.2.0
- * @category model
+ * @category Model
  */
 export interface Request<A> {
   readonly method: Method
@@ -128,7 +128,7 @@ export interface Request<A> {
  * Creates a BadUrl error
  *
  * @since 0.2.0
- * @category errors
+ * @category Errors
  */
 export const badUrl = (url: string): HttpError => ({ _tag: 'BadUrl', url })
 
@@ -136,7 +136,7 @@ export const badUrl = (url: string): HttpError => ({ _tag: 'BadUrl', url })
  * Creates a Timeout error
  *
  * @since 0.2.0
- * @category errors
+ * @category Errors
  */
 export const timeout: HttpError = { _tag: 'Timeout' }
 
@@ -144,7 +144,7 @@ export const timeout: HttpError = { _tag: 'Timeout' }
  * Creates a NetworkError
  *
  * @since 0.2.0
- * @category errors
+ * @category Errors
  */
 export const networkError = (error: unknown): HttpError => ({ _tag: 'NetworkError', error })
 
@@ -152,7 +152,7 @@ export const networkError = (error: unknown): HttpError => ({ _tag: 'NetworkErro
  * Creates a BadStatus error
  *
  * @since 0.2.0
- * @category errors
+ * @category Errors
  */
 export const badStatus = (status: number, body: string): HttpError => ({ _tag: 'BadStatus', status, body })
 
@@ -160,7 +160,7 @@ export const badStatus = (status: number, body: string): HttpError => ({ _tag: '
  * Creates a BadBody error
  *
  * @since 0.2.0
- * @category errors
+ * @category Errors
  */
 export const badBody = (error: unknown): HttpError => ({ _tag: 'BadBody', error })
 
@@ -178,7 +178,7 @@ export const badBody = (error: unknown): HttpError => ({ _tag: 'BadBody', error 
  * ```
  *
  * @since 0.2.0
- * @category expectations
+ * @category Expectations
  */
 export const expectJson = <A>(decoder: Schema.Schema<A>): Expect<A> => ({
   _tag: 'ExpectJson',
@@ -189,7 +189,7 @@ export const expectJson = <A>(decoder: Schema.Schema<A>): Expect<A> => ({
  * Expect a string response.
  *
  * @since 0.2.0
- * @category expectations
+ * @category Expectations
  */
 export const expectString: Expect<string> = expectJson(Schema.String)
 
@@ -197,7 +197,7 @@ export const expectString: Expect<string> = expectJson(Schema.String)
  * Expect any JSON value (no validation).
  *
  * @since 0.2.0
- * @category expectations
+ * @category Expectations
  */
 export const expectWhatever: Expect<unknown> = expectJson(Schema.Unknown)
 
@@ -209,7 +209,7 @@ export const expectWhatever: Expect<unknown> = expectJson(Schema.Unknown)
  * Empty body for requests that don't send data.
  *
  * @since 0.2.0
- * @category body
+ * @category Body
  */
 export const emptyBody: Body = {
   _tag: 'EmptyBody'
@@ -226,7 +226,7 @@ export const emptyBody: Body = {
  * ```
  *
  * @since 0.2.0
- * @category body
+ * @category Body
  */
 export const jsonBody = <A, I>(
   schema: Schema.Schema<A, I>,
@@ -247,7 +247,7 @@ export const jsonBody = <A, I>(
  * ```
  *
  * @since 0.2.0
- * @category body
+ * @category Body
  */
 export const rawBody = <A>(value: A): Body => ({
   _tag: 'JsonBody',
@@ -268,7 +268,7 @@ export const rawBody = <A>(value: A): Body => ({
  * ```
  *
  * @since 0.2.0
- * @category constructors
+ * @category Constructors
  */
 export const get = <A>(url: string, expect: Expect<A>): Request<A> => ({
   method: 'GET',
@@ -290,7 +290,7 @@ export const get = <A>(url: string, expect: Expect<A>): Request<A> => ({
  * ```
  *
  * @since 0.2.0
- * @category constructors
+ * @category Constructors
  */
 export const post = <A>(url: string, body: Body, expect: Expect<A>): Request<A> => ({
   method: 'POST',
@@ -306,7 +306,7 @@ export const post = <A>(url: string, body: Body, expect: Expect<A>): Request<A> 
  * Creates a PUT request with Schema-validated body.
  *
  * @since 0.2.0
- * @category constructors
+ * @category Constructors
  */
 export const put = <A>(url: string, body: Body, expect: Expect<A>): Request<A> => ({
   method: 'PUT',
@@ -322,7 +322,7 @@ export const put = <A>(url: string, body: Body, expect: Expect<A>): Request<A> =
  * Creates a PATCH request with Schema-validated body.
  *
  * @since 0.2.0
- * @category constructors
+ * @category Constructors
  */
 export const patch = <A>(url: string, body: Body, expect: Expect<A>): Request<A> => ({
   method: 'PATCH',
@@ -338,7 +338,7 @@ export const patch = <A>(url: string, body: Body, expect: Expect<A>): Request<A>
  * Creates a DELETE request.
  *
  * @since 0.2.0
- * @category constructors
+ * @category Constructors
  */
 export const del = <A>(url: string, expect: Expect<A>): Request<A> => ({
   method: 'DELETE',
@@ -354,7 +354,7 @@ export const del = <A>(url: string, expect: Expect<A>): Request<A> => ({
  * Creates a custom request with full control.
  *
  * @since 0.2.0
- * @category constructors
+ * @category Constructors
  */
 export const request = <A>(config: {
   readonly method: Method
@@ -390,7 +390,7 @@ export const request = <A>(config: {
  * ```
  *
  * @since 0.2.0
- * @category modifiers
+ * @category Modifiers
  */
 export const withHeader = (name: string, value: string) =>
   <A>(req: Request<A>): Request<A> => ({
@@ -402,7 +402,7 @@ export const withHeader = (name: string, value: string) =>
  * Adds multiple headers to the request.
  *
  * @since 0.2.0
- * @category modifiers
+ * @category Modifiers
  */
 export const withHeaders = (headers: ReadonlyArray<Header>) =>
   <A>(req: Request<A>): Request<A> => ({
@@ -414,7 +414,7 @@ export const withHeaders = (headers: ReadonlyArray<Header>) =>
  * Sets a timeout for the request.
  *
  * @since 0.2.0
- * @category modifiers
+ * @category Modifiers
  */
 export const withTimeout = (ms: number) =>
   <A>(req: Request<A>): Request<A> => ({
@@ -426,7 +426,7 @@ export const withTimeout = (ms: number) =>
  * Enables credentials (cookies) for cross-origin requests.
  *
  * @since 0.2.0
- * @category modifiers
+ * @category Modifiers
  */
 export const withCredentials = <A>(req: Request<A>): Request<A> => ({
   ...req,
@@ -441,7 +441,7 @@ export const withCredentials = <A>(req: Request<A>): Request<A> => ({
  * Creates a header.
  *
  * @since 0.2.0
- * @category headers
+ * @category Headers
  */
 export const header = (name: string, value: string): Header => ({ name, value })
 
@@ -449,7 +449,7 @@ export const header = (name: string, value: string): Header => ({ name, value })
  * Creates a Content-Type header.
  *
  * @since 0.2.0
- * @category headers
+ * @category Headers
  */
 export const contentType = (value: string): Header => header('Content-Type', value)
 
@@ -457,7 +457,7 @@ export const contentType = (value: string): Header => header('Content-Type', val
  * Creates an Authorization header.
  *
  * @since 0.2.0
- * @category headers
+ * @category Headers
  */
 export const authorization = (value: string): Header => header('Authorization', value)
 
@@ -465,7 +465,7 @@ export const authorization = (value: string): Header => header('Authorization', 
  * Creates a Bearer token Authorization header.
  *
  * @since 0.2.0
- * @category headers
+ * @category Headers
  */
 export const bearerToken = (token: string): Header => authorization(`Bearer ${token}`)
 
@@ -508,7 +508,7 @@ const mapHttpClientError = (error: HttpClientError.HttpClientError): HttpError =
  * ```
  *
  * @since 0.2.0
- * @category execution
+ * @category Execution
  */
 export const toTaskRaw = <A>(req: Request<A>): Task<A, HttpError, HttpClient.HttpClient> => {
   const execute = Effect.gen(function* () {
@@ -600,7 +600,7 @@ export const toTaskRaw = <A>(req: Request<A>): Task<A, HttpError, HttpClient.Htt
  * ```
  *
  * @since 0.2.0
- * @category execution
+ * @category Execution
  */
 export const toTask = <A>(req: Request<A>): Task<A, HttpError, HttpRequirements> =>
   toTaskRaw(req).pipe(Effect.provide(FetchHttpClient.layer))
@@ -620,7 +620,7 @@ export const toTask = <A>(req: Request<A>): Task<A, HttpError, HttpRequirements>
  * ```
  *
  * @since 0.2.0
- * @category execution
+ * @category Execution
  */
 export const sendRaw = <A, Msg>(
   req: Request<A>,
@@ -653,7 +653,7 @@ export const sendRaw = <A, Msg>(
  * ```
  *
  * @since 0.2.0
- * @category execution
+ * @category Execution
  */
 export const send = <A, Msg>(
   req: Request<A>,
@@ -682,7 +682,7 @@ export const send = <A, Msg>(
  * ```
  *
  * @since 0.2.0
- * @category execution
+ * @category Execution
  */
 export const sendBy = <A, Msg>(
   onSuccess: (a: A) => Msg,

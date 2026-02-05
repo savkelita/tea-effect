@@ -20,7 +20,7 @@ import { Cmd } from './Cmd'
  * This provides familiar naming for those coming from Elm/elm-ts.
  *
  * @since 0.1.0
- * @category model
+ * @category Model
  */
 export type Task<A, E = never, R = never> = Effect.Effect<A, E, R>
 
@@ -32,7 +32,7 @@ export type Task<A, E = never, R = never> = Effect.Effect<A, E, R>
  * Creates a Task that succeeds with the given value.
  *
  * @since 0.1.0
- * @category constructors
+ * @category Constructors
  */
 export const succeed = <A>(a: A): Task<A> => Effect.succeed(a)
 
@@ -40,7 +40,7 @@ export const succeed = <A>(a: A): Task<A> => Effect.succeed(a)
  * Creates a Task that fails with the given error.
  *
  * @since 0.1.0
- * @category constructors
+ * @category Constructors
  */
 export const fail = <E>(e: E): Task<never, E> => Effect.fail(e)
 
@@ -62,7 +62,7 @@ export const fail = <E>(e: E): Task<never, E> => Effect.fail(e)
  * ```
  *
  * @since 0.1.0
- * @category conversions
+ * @category Conversions
  */
 export const perform = <A, Msg>(f: (a: A) => Msg) =>
   <R>(task: Task<A, never, R>): Cmd<Msg, never, R> =>
@@ -83,7 +83,7 @@ export const perform = <A, Msg>(f: (a: A) => Msg) =>
  * ```
  *
  * @since 0.1.0
- * @category conversions
+ * @category Conversions
  */
 export const attempt = <E, A, Msg>(f: (result: Either.Either<A, E>) => Msg) =>
   <R>(task: Task<A, E, R>): Cmd<Msg, never, R> =>
@@ -110,7 +110,7 @@ export const attempt = <E, A, Msg>(f: (result: Either.Either<A, E>) => Msg) =>
  * ```
  *
  * @since 0.1.0
- * @category conversions
+ * @category Conversions
  */
 export const attemptWith = <A, E, Msg, R>(handlers: {
   readonly onSuccess: (a: A) => Msg
@@ -132,7 +132,7 @@ export const attemptWith = <A, E, Msg, R>(handlers: {
  * Maps the success value of a Task.
  *
  * @since 0.1.0
- * @category combinators
+ * @category Combinators
  */
 export const map = <A, B>(f: (a: A) => B) =>
   <E, R>(task: Task<A, E, R>): Task<B, E, R> =>
@@ -142,7 +142,7 @@ export const map = <A, B>(f: (a: A) => B) =>
  * Maps the error value of a Task.
  *
  * @since 0.1.0
- * @category combinators
+ * @category Combinators
  */
 export const mapError = <E, E2>(f: (e: E) => E2) =>
   <A, R>(task: Task<A, E, R>): Task<A, E2, R> =>
@@ -152,7 +152,7 @@ export const mapError = <E, E2>(f: (e: E) => E2) =>
  * Chains Tasks sequentially.
  *
  * @since 0.1.0
- * @category combinators
+ * @category Combinators
  */
 export const flatMap = <A, B, E2, R2>(f: (a: A) => Task<B, E2, R2>) =>
   <E, R>(task: Task<A, E, R>): Task<B, E | E2, R | R2> =>
@@ -162,7 +162,7 @@ export const flatMap = <A, B, E2, R2>(f: (a: A) => Task<B, E2, R2>) =>
  * Provides error recovery for a Task.
  *
  * @since 0.1.0
- * @category combinators
+ * @category Combinators
  */
 export const catchAll = <E, A2, E2, R2>(f: (e: E) => Task<A2, E2, R2>) =>
   <A, R>(task: Task<A, E, R>): Task<A | A2, E2, R | R2> =>
@@ -172,7 +172,7 @@ export const catchAll = <E, A2, E2, R2>(f: (e: E) => Task<A2, E2, R2>) =>
  * Runs two Tasks concurrently and returns both results.
  *
  * @since 0.1.0
- * @category combinators
+ * @category Combinators
  */
 export const both = <A, E, R, B, E2, R2>(
   taskA: Task<A, E, R>,
@@ -184,7 +184,7 @@ export const both = <A, E, R, B, E2, R2>(
  * Runs all Tasks concurrently and returns all results.
  *
  * @since 0.1.0
- * @category combinators
+ * @category Combinators
  */
 export const all = <A, E, R>(
   tasks: ReadonlyArray<Task<A, E, R>>
