@@ -23,10 +23,12 @@
  *   home: Router.path('/'),
  *   users: Router.path('/users'),
  *   user: Router.path('/users/:id', { id: Schema.NumberFromString }),
- *   search: Router.path('/search').query({
- *     q: Schema.String,
- *     page: Schema.optional(Schema.NumberFromString)
- *   })
+ *   search: Router.path('/search').query(
+ *     Schema.Struct({
+ *       q: Schema.String,
+ *       page: Schema.optional(Schema.NumberFromString)
+ *     })
+ *   )
  * })
  *
  * // 2. Parse URLs
@@ -161,10 +163,12 @@ export interface RouteBuilder<Tag extends string, Params> {
  * Router.path('/users/:id', { id: Schema.NumberFromString })
  *
  * // With query params
- * Router.path('/search').query({
- *   q: Schema.String,
- *   page: Schema.optional(Schema.NumberFromString)
- * })
+ * Router.path('/search').query(
+ *   Schema.Struct({
+ *     q: Schema.String,
+ *     page: Schema.optional(Schema.NumberFromString)
+ *   })
+ * )
  * ```
  *
  * @since 0.6.0
@@ -301,7 +305,7 @@ export type Routes<T extends Record<string, RouteBuilder<any, any> | RouteDefini
  * const routes = Router.routes({
  *   home: Router.path('/'),
  *   user: Router.path('/users/:id', { id: Schema.NumberFromString }),
- *   search: Router.path('/search').query({ q: Schema.String })
+ *   search: Router.path('/search').query(Schema.Struct({ q: Schema.String }))
  * })
  *
  * type Route = Router.RouteType<typeof routes>
