@@ -313,6 +313,9 @@ export type Routes<T extends Record<string, RouteBuilder<any, any> | RouteDefini
  * Define a collection of routes.
  *
  * Each route gets tagged with its key name for pattern matching.
+ * Routes are matched in definition order (first match wins).
+ * More specific routes (e.g. those with required query parameters)
+ * should be defined before less specific routes that share the same path pattern.
  *
  * @example
  * ```ts
