@@ -115,6 +115,8 @@ export interface RouteDefinition<Tag extends string, Params, Query = void> {
   readonly matcher: Matcher.Matcher<Params & (Query extends void ? {} : Query)>
   readonly hasParams: boolean
   readonly hasQuery: boolean
+  readonly paramKeys: readonly string[]
+  readonly queryKeys: readonly string[]
 }
 
 /**
@@ -176,6 +178,7 @@ export const path = <
   schemas?: S
 ): RouteBuilder<string, ParamsFromSchemas<ExtractParams<P>, S>> => {
   const matcher = buildMatcherFromPattern(pattern, schemas || {})
+  const paramKeys = extractParamKeys(pattern)
 
   return {
     _tag: '',
@@ -183,20 +186,56 @@ export const path = <
 
     query: <Q extends Record<string, unknown>, I>(
       querySchema: Schema.Schema<Q, I, never>
-    ): RouteDefinition<string, ParamsFromSchemas<ExtractParams<P>, S>, Q> => ({
-      _tag: '',
-      matcher: Matcher.seq(matcher, Matcher.query(querySchema)) as any,
-      hasParams: pattern.includes(':'),
-      hasQuery: true
-    }),
+    ): RouteDefinition<string, ParamsFromSchemas<ExtractParams<P>, S>, Q> => {
+      const queryKeys = getSchemaKeys(querySchema)
+      const queryMatcher: Matcher.Matcher<Q> = {
+        parser: Parser.query(querySchema),
+        formatter: Formatter.query<Q>(queryKeys)
+      }
+      return {
+        _tag: '',
+        matcher: Matcher.seq(matcher, queryMatcher) as any,
+        hasParams: pattern.includes(':'),
+        hasQuery: true,
+        paramKeys,
+        queryKeys: queryKeys || []
+      }
+    },
 
     end: (): RouteDefinition<string, ParamsFromSchemas<ExtractParams<P>, S>, void> => ({
       _tag: '',
       matcher: Matcher.seq(matcher, Matcher.end) as any,
       hasParams: pattern.includes(':'),
-      hasQuery: false
+      hasQuery: false,
+      paramKeys,
+      queryKeys: []
     })
   }
+}
+
+/**
+ * Extract parameter names from a path pattern string.
+ *
+ * @internal
+ */
+function extractParamKeys(pattern: string): string[] {
+  return pattern
+    .split('/')
+    .filter(s => s.startsWith(':'))
+    .map(s => s.slice(1))
+}
+
+/**
+ * Extract property keys from a Schema (works for Schema.Struct).
+ *
+ * @internal
+ */
+function getSchemaKeys(schema: Schema.Schema<any, any, never>): string[] | undefined {
+  const ast = schema.ast as any
+  if (ast._tag === 'TypeLiteral' && Array.isArray(ast.propertySignatures)) {
+    return ast.propertySignatures.map((ps: any) => String(ps.name))
+  }
+  return undefined
 }
 
 /**
@@ -436,10 +475,17 @@ function buildRouteObject(
   const result: Record<string, unknown> = { _tag: tag }
 
   if (definition.hasParams && definition.hasQuery) {
-    // Separate params from query (query fields are the ones that came from query parsing)
-    // For now, just put everything in both - the Schema will handle separation
-    result.params = parsed
-    result.query = parsed
+    const params: Record<string, unknown> = {}
+    const query: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(parsed)) {
+      if (definition.paramKeys.includes(key)) {
+        params[key] = value
+      } else {
+        query[key] = value
+      }
+    }
+    result.params = params
+    result.query = query
   } else if (definition.hasParams) {
     result.params = parsed
   } else if (definition.hasQuery) {

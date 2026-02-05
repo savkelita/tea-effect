@@ -246,14 +246,22 @@ describe('Router', () => {
   })
 
   describe('Router API', () => {
+    // More specific routes (with query requirements) must come before
+    // less specific routes that share the same path pattern.
     const testRoutes = Router.routes({
       home: Router.path('/'),
       users: Router.path('/users'),
-      user: Router.path('/users/:id', { id: Schema.NumberFromString }),
       userPosts: Router.path('/users/:userId/posts/:postId', {
         userId: Schema.NumberFromString,
         postId: Schema.NumberFromString
       }),
+      userSearch: Router.path('/users/:id', { id: Schema.NumberFromString }).query(
+        Schema.Struct({
+          tab: Schema.String,
+          page: Schema.optional(Schema.NumberFromString)
+        })
+      ),
+      user: Router.path('/users/:id', { id: Schema.NumberFromString }),
       search: Router.path('/search').query(
         Schema.Struct({
           q: Schema.String,
@@ -308,6 +316,17 @@ describe('Router', () => {
         }
       })
 
+      it('should parse route with both path params and query params', () => {
+        const result = Router.parse(testRoutes, { pathname: '/users/7', search: '?tab=posts&page=3' })
+        expect(Option.isSome(result)).toBe(true)
+        if (Option.isSome(result)) {
+          expect(result.value._tag).toBe('userSearch')
+          expect((result.value as any).params.id).toBe(7)
+          expect((result.value as any).query.tab).toBe('posts')
+          expect((result.value as any).query.page).toBe(3)
+        }
+      })
+
       it('should return None for unknown route', () => {
         const result = Router.parse(testRoutes, { pathname: '/unknown', search: '' })
         expect(Option.isNone(result)).toBe(true)
@@ -338,6 +357,14 @@ describe('Router', () => {
         expect(url).toContain('/search')
         expect(url).toContain('q=hello')
         expect(url).toContain('page=2')
+      })
+
+      it('should format route with both path params and query params', () => {
+        const url = Router.format(testRoutes.userSearch, { id: 7, tab: 'posts', page: 3 })
+        expect(url).toContain('/users/7')
+        expect(url).toContain('tab=posts')
+        expect(url).toContain('page=3')
+        expect(url).not.toContain('id=')
       })
     })
   })

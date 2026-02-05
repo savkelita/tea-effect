@@ -110,11 +110,14 @@ export const param = <K extends string, A>(
  * @since 0.6.0
  * @category Primitives
  */
-export const query = <A extends Record<string, unknown>>(): Formatter<A> => ({
+export const query = <A extends Record<string, unknown>>(keys?: readonly string[]): Formatter<A> => ({
   format: (params) => {
     const searchParams = new URLSearchParams()
+    const entries = keys
+      ? keys.map(k => [k, (params as Record<string, unknown>)[k]] as const)
+      : Object.entries(params)
 
-    for (const [key, value] of Object.entries(params)) {
+    for (const [key, value] of entries) {
       if (value === undefined || value === null) continue
 
       if (Array.isArray(value)) {
