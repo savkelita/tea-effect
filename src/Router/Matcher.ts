@@ -18,7 +18,7 @@ import * as Formatter from './Formatter'
  *
  * @example
  * ```ts
- * const userMatcher = then(lit('users'), int('id'))
+ * const userMatcher = seq(lit('users'), int('id'))
  *
  * // Parse
  * userMatcher.parser.parse(Route.parse('/users/42', ''))
