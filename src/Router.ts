@@ -207,13 +207,18 @@ export const path = <
           `Router.path: query keys collide with path params: ${overlap.join(', ')}`
         )
       }
+      const encodeQuery = Schema.encodeSync(querySchema)
       const queryMatcher: Matcher.Matcher<Q> = {
         parser: Parser.query(querySchema),
-        formatter: Formatter.query<Q>(
-          queryKeys,
-          paramKeys,
-          Schema.encodeSync(querySchema) as (q: Record<string, unknown>) => Record<string, unknown>
-        )
+        formatter: Formatter.query<Q>(queryKeys, paramKeys, (q) => {
+          // Fall back to the raw subset if encoding fails (e.g. an omitted field
+          // in an as-any call) so format stays total, as it was before.
+          try {
+            return encodeQuery(q as Q) as Record<string, unknown>
+          } catch {
+            return q
+          }
+        })
       }
       return {
         _tag: '',
@@ -303,8 +308,19 @@ function buildMatcherFromPattern<S extends Record<string, Schema.Schema<any, str
       const schema = schemas[paramName]
 
       if (schema) {
-        // Encode via the schema (not String()) so format round-trips transforms.
-        matcher = Matcher.seq(matcher, Matcher.param(paramName, schema, Schema.encodeSync(schema)))
+        // Encode via the schema (not String()) so format round-trips transforms,
+        // but fall back to String() if encode throws (e.g. a refined schema like
+        // IntFromString given a type-valid but out-of-range value) so format
+        // stays total instead of crashing.
+        const enc = Schema.encodeSync(schema)
+        const safeEncode = (a: unknown): string => {
+          try {
+            return enc(a as any)
+          } catch {
+            return String(a)
+          }
+        }
+        matcher = Matcher.seq(matcher, Matcher.param(paramName, schema, safeEncode))
       } else {
         matcher = Matcher.seq(matcher, Matcher.str(paramName))
       }
