@@ -79,9 +79,9 @@ export * as Matcher from './Router/Matcher'
  * @since 0.6.0
  * @category Type utilities
  */
-export type ExtractParams<T extends string> = T extends `${string}:${infer Param}/${infer Rest}`
+export type ExtractParams<T extends string> = T extends `${string}/:${infer Param}/${infer Rest}`
   ? Param | ExtractParams<`/${Rest}`>
-  : T extends `${string}:${infer Param}`
+  : T extends `${string}/:${infer Param}`
     ? Param
     : never
 
@@ -205,7 +205,7 @@ export const path = <
       return {
         _tag: '',
         matcher: Matcher.seq(matcher, queryMatcher) as any,
-        hasParams: pattern.includes(':'),
+        hasParams: paramKeys.length > 0,
         hasQuery: true,
         paramKeys,
         queryKeys: queryKeys || []
@@ -215,7 +215,7 @@ export const path = <
     end: (): RouteDefinition<string, ParamsFromSchemas<ExtractParams<P>, S>, void> => ({
       _tag: '',
       matcher: Matcher.seq(matcher, Matcher.end) as any,
-      hasParams: pattern.includes(':'),
+      hasParams: paramKeys.length > 0,
       hasQuery: false,
       paramKeys,
       queryKeys: []
