@@ -6,9 +6,9 @@
  *
  * @since 0.1.0
  */
-import { Effect, Stream, SubscriptionRef, Queue, pipe, Scope, Exit, Deferred, Cause } from 'effect'
+import { Effect, Stream, SubscriptionRef, Queue, Fiber, pipe, Scope, Exit, Deferred, Cause } from 'effect'
 import { Cmd } from './Cmd'
-import { Sub, none as subNone } from './Sub'
+import { Sub, none as subNone, getSubEntries } from './Sub'
 
 // -------------------------------------------------------------------------------------
 // model
@@ -149,14 +149,37 @@ export const program = <Model, Msg, E = never, R = never>(
       })
     )
 
-    // Subscription management - reacts to model changes
-    // Uses switch: true to cancel previous subscription when model changes
-    const subscriptionLoop: Effect.Effect<void, E, R> = pipe(
-      modelRef.changes,
-      Stream.changes, // Only emit when model actually changes (reference equality)
-      Stream.flatMap(model => subscriptions(model), { switch: true }),
-      Stream.tap(msg => Queue.offer(msgQueue, msg)),
-      Stream.runDrain
+    // Subscription management - diff keyed subscriptions on each model change,
+    // keeping unchanged subs running and starting/stopping only the delta (Elm
+    // semantics). This avoids restarting timers and re-registering DOM listeners
+    // on every message, which switch-restart did.
+    const subFibers = new Map<string, Fiber.RuntimeFiber<void, never>>()
+    const diffSubs = (model: Model): Effect.Effect<void, never, R> =>
+      Effect.gen(function* () {
+        const entries = getSubEntries(subscriptions(model))
+        const nextKeys = new Set(entries.map(e => e.key))
+        for (const [key, fiber] of subFibers) {
+          if (!nextKeys.has(key)) {
+            yield* Fiber.interrupt(fiber)
+            subFibers.delete(key)
+          }
+        }
+        for (const entry of entries) {
+          if (!subFibers.has(entry.key)) {
+            const fiber = yield* Effect.forkIn(progScope)(
+              pipe(
+                Stream.runForEach(entry.stream, (msg: Msg) => Queue.offer(msgQueue, msg)),
+                Effect.catchAllCause(surfaceCause)
+              )
+            )
+            subFibers.set(entry.key, fiber)
+          }
+        }
+      })
+
+    const subscriptionLoop: Effect.Effect<void, never, R> = Stream.runForEach(
+      Stream.changes(modelRef.changes),
+      diffSubs
     )
 
     // Start loops in the program scope

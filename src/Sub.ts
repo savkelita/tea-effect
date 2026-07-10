@@ -24,6 +24,72 @@ import { Stream, pipe, Effect, Schedule } from 'effect'
  */
 export type Sub<Msg, E = never, R = never> = Stream.Stream<Msg, E, R>
 
+/**
+ * A single keyed subscription stream used by the runtime to diff subscriptions
+ * across model changes (keep unchanged ones running, start/stop only the delta).
+ *
+ * @since 0.6.0
+ * @category Model
+ */
+export interface SubEntry<Msg, E, R> {
+  readonly key: string
+  readonly stream: Stream.Stream<Msg, E, R>
+}
+
+// -------------------------------------------------------------------------------------
+// keyed entries (used by Platform for subscription diffing)
+// -------------------------------------------------------------------------------------
+
+const entriesMap = new WeakMap<object, ReadonlyArray<SubEntry<any, any, any>>>()
+let rawCounter = 0
+
+const withEntries = <Msg, E, R>(
+  stream: Stream.Stream<Msg, E, R>,
+  entries: ReadonlyArray<SubEntry<Msg, E, R>>
+): Sub<Msg, E, R> => {
+  entriesMap.set(stream as object, entries)
+  return stream
+}
+
+const keyed = <Msg, E, R>(key: string, stream: Stream.Stream<Msg, E, R>): Sub<Msg, E, R> =>
+  withEntries(stream, [{ key, stream }])
+
+const stableStringify = (value: unknown): string => {
+  const norm = (v: any): any => {
+    if (v && typeof v === 'object') {
+      if (Array.isArray(v)) return v.map(norm)
+      return Object.keys(v)
+        .sort()
+        .reduce((acc, k) => {
+          acc[k] = norm(v[k])
+          return acc
+        }, {} as Record<string, unknown>)
+    }
+    return v
+  }
+  try {
+    return JSON.stringify(norm(value))
+  } catch {
+    return String(value)
+  }
+}
+
+/**
+ * Get the keyed entries for a subscription. Library constructors attach stable
+ * keys; a raw Stream without entries gets one fallback key (memoized by stream
+ * identity, so a referentially-stable sub is kept alive across model changes).
+ *
+ * @since 0.6.0
+ * @category Model
+ */
+export const getSubEntries = <Msg, E, R>(sub: Sub<Msg, E, R>): ReadonlyArray<SubEntry<Msg, E, R>> => {
+  const existing = entriesMap.get(sub as object)
+  if (existing) return existing as ReadonlyArray<SubEntry<Msg, E, R>>
+  const fallback: ReadonlyArray<SubEntry<Msg, E, R>> = [{ key: `raw:${rawCounter++}`, stream: sub }]
+  entriesMap.set(sub as object, fallback)
+  return fallback
+}
+
 // -------------------------------------------------------------------------------------
 // constructors
 // -------------------------------------------------------------------------------------
@@ -34,7 +100,7 @@ export type Sub<Msg, E = never, R = never> = Stream.Stream<Msg, E, R>
  * @since 0.1.0
  * @category Constructors
  */
-export const none: Sub<never> = Stream.empty
+export const none: Sub<never> = withEntries(Stream.empty, [])
 
 /**
  * Creates a subscription from a single message.
@@ -42,7 +108,7 @@ export const none: Sub<never> = Stream.empty
  * @since 0.1.0
  * @category Constructors
  */
-export const of = <Msg>(msg: Msg): Sub<Msg> => Stream.succeed(msg)
+export const of = <Msg>(msg: Msg): Sub<Msg> => keyed(`of:${stableStringify(msg)}`, Stream.succeed(msg))
 
 /**
  * Creates a subscription from an iterable of messages.
@@ -50,7 +116,10 @@ export const of = <Msg>(msg: Msg): Sub<Msg> => Stream.succeed(msg)
  * @since 0.1.0
  * @category Constructors
  */
-export const fromIterable = <Msg>(msgs: Iterable<Msg>): Sub<Msg> => Stream.fromIterable(msgs)
+export const fromIterable = <Msg>(msgs: Iterable<Msg>): Sub<Msg> => {
+  const arr = Array.from(msgs)
+  return keyed(`fromIterable:${stableStringify(arr)}`, Stream.fromIterable(arr))
+}
 
 /**
  * Creates a subscription that emits a message at regular intervals.
@@ -59,26 +128,32 @@ export const fromIterable = <Msg>(msgs: Iterable<Msg>): Sub<Msg> => Stream.fromI
  * @category Constructors
  */
 export const interval = <Msg>(ms: number, msg: Msg): Sub<Msg> =>
-  pipe(
-    Stream.repeatEffect(Effect.succeed(msg)),
-    Stream.schedule(Schedule.spaced(ms))
+  keyed(
+    `interval:${ms}:${stableStringify(msg)}`,
+    pipe(Stream.repeatEffect(Effect.succeed(msg)), Stream.schedule(Schedule.spaced(ms)))
   )
 
 /**
  * Creates a subscription from a callback-based event source.
  *
+ * Pass a stable `key` so the runtime keeps the source alive across model
+ * changes instead of tearing it down and re-registering on every change.
+ *
  * @since 0.1.0
  * @category Constructors
  */
 export const fromCallback = <Msg>(
-  register: (emit: (msg: Msg) => void) => () => void
-): Sub<Msg> =>
-  Stream.async<Msg>((emit) => {
+  register: (emit: (msg: Msg) => void) => () => void,
+  key?: string
+): Sub<Msg> => {
+  const stream = Stream.async<Msg>((emit) => {
     const cleanup = register((msg) => {
       emit.single(msg)
     })
     return Effect.sync(() => cleanup())
   })
+  return key === undefined ? stream : keyed(`callback:${key}`, stream)
+}
 
 // -------------------------------------------------------------------------------------
 // combinators
@@ -92,8 +167,13 @@ export const fromCallback = <Msg>(
  */
 export const map =
   <A, Msg>(f: (a: A) => Msg) =>
-  <E, R>(sub: Sub<A, E, R>): Sub<Msg, E, R> =>
-    Stream.map(sub, f)
+  <E, R>(sub: Sub<A, E, R>): Sub<Msg, E, R> => {
+    const entries = getSubEntries(sub).map((e) => ({
+      key: `${e.key}:map`,
+      stream: Stream.map(e.stream, f)
+    }))
+    return withEntries(Stream.map(sub, f), entries)
+  }
 
 /**
  * Batches multiple subscriptions into a single subscription.
@@ -109,9 +189,8 @@ export const batch = <Msg, E, R>(subs: ReadonlyArray<Sub<Msg, E, R>>): Sub<Msg, 
   if (subs.length === 1) {
     return subs[0]
   }
-  return pipe(
-    Stream.mergeAll(subs, { concurrency: 'unbounded' })
-  )
+  const entries = subs.flatMap((sub) => getSubEntries(sub))
+  return withEntries(Stream.mergeAll(subs, { concurrency: 'unbounded' }), entries)
 }
 
 /**
@@ -122,5 +201,10 @@ export const batch = <Msg, E, R>(subs: ReadonlyArray<Sub<Msg, E, R>>): Sub<Msg, 
  */
 export const filter =
   <Msg>(predicate: (msg: Msg) => boolean) =>
-  <E, R>(sub: Sub<Msg, E, R>): Sub<Msg, E, R> =>
-    Stream.filter(sub, predicate)
+  <E, R>(sub: Sub<Msg, E, R>): Sub<Msg, E, R> => {
+    const entries = getSubEntries(sub).map((e) => ({
+      key: `${e.key}:filter`,
+      stream: Stream.filter(e.stream, predicate)
+    }))
+    return withEntries(Stream.filter(sub, predicate), entries)
+  }
