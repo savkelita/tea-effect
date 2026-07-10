@@ -32,7 +32,20 @@ export class Route {
    * @since 0.6.0
    */
   static parse(pathname: string, search: string = ''): Route {
-    const segments = pathname.split('/').filter(Boolean)
+    const segments = pathname
+      .split('/')
+      .filter(Boolean)
+      .map((segment) => {
+        // Browsers deliver location.pathname percent-encoded; decode each
+        // segment so captured params and literal matches use the real value.
+        // Decode per-segment (after splitting) so an encoded %2F cannot forge
+        // a segment boundary, and tolerate malformed sequences like '%zz'.
+        try {
+          return decodeURIComponent(segment)
+        } catch {
+          return segment
+        }
+      })
     const query = new URLSearchParams(search)
     return new Route(segments, query)
   }
@@ -68,7 +81,9 @@ export class Route {
    * @since 0.6.0
    */
   toString(): string {
-    const path = '/' + this.segments.join('/')
+    // Percent-encode each segment so values containing '/', '?', '#', spaces,
+    // or unicode produce valid URLs that round-trip back through parse().
+    const path = '/' + this.segments.map(encodeURIComponent).join('/')
     const queryString = this.query.toString()
     return queryString ? `${path}?${queryString}` : path
   }
