@@ -74,7 +74,7 @@
  */
 import { Effect, Stream, Scope } from 'effect'
 import type { Cmd } from './Cmd'
-import { batch as subBatch, none as subNone, Sub } from './Sub'
+import { batch as subBatch, none as subNone, fromCallback, Sub } from './Sub'
 import * as Html from './Html'
 
 // -------------------------------------------------------------------------------------
@@ -172,6 +172,19 @@ export const getLocation = (): Location => {
   }
 }
 
+// Internal notifier so a programmatic pushUrl/replaceUrl reaches urlChanges even
+// when it fires before the subscription has registered (e.g. from init's Cmd),
+// which a bare synthetic popstate would miss.
+const urlChangeHandlers = new Set<() => void>()
+let pendingUrlChange = false
+const notifyUrlChange = (): void => {
+  if (urlChangeHandlers.size > 0) {
+    urlChangeHandlers.forEach((h) => h())
+  } else {
+    pendingUrlChange = true
+  }
+}
+
 // -------------------------------------------------------------------------------------
 // Commands
 // -------------------------------------------------------------------------------------
@@ -201,7 +214,7 @@ export const pushUrl = <Msg = never>(url: string): Cmd<Msg> =>
     Effect.sync(() => {
       if (typeof window !== 'undefined') {
         window.history.pushState(null, '', url)
-        window.dispatchEvent(new PopStateEvent('popstate'))
+        notifyUrlChange()
       }
     })
   )
@@ -227,7 +240,7 @@ export const replaceUrl = <Msg = never>(url: string): Cmd<Msg> =>
     Effect.sync(() => {
       if (typeof window !== 'undefined') {
         window.history.replaceState(null, '', url)
-        window.dispatchEvent(new PopStateEvent('popstate'))
+        notifyUrlChange()
       }
     })
   )
@@ -356,22 +369,27 @@ export const reload: Cmd<never> = Stream.execute(
  * @category Subscriptions
  */
 export const urlChanges = <Msg>(toMsg: (location: Location) => Msg): Sub<Msg> =>
-  Stream.async<Msg>((emit) => {
+  fromCallback<Msg>((emit) => {
     if (typeof window === 'undefined') {
-      return
+      return () => {}
     }
 
-    const handler = () => {
-      emit.single(toMsg(getLocation()))
-    }
+    const handler = () => emit(toMsg(getLocation()))
 
-    // Listen for popstate events (back/forward navigation and programmatic changes)
+    // popstate covers back/forward; the internal notifier covers programmatic
+    // pushUrl/replaceUrl (including one that fired before this registration).
+    urlChangeHandlers.add(handler)
     window.addEventListener('popstate', handler)
+    if (pendingUrlChange) {
+      pendingUrlChange = false
+      handler()
+    }
 
-    return Effect.sync(() => {
+    return () => {
+      urlChangeHandlers.delete(handler)
       window.removeEventListener('popstate', handler)
-    })
-  })
+    }
+  }, 'navigation:urlChanges')
 
 /**
  * Subscribe to link clicks.
@@ -425,9 +443,9 @@ export const urlChanges = <Msg>(toMsg: (location: Location) => Msg): Sub<Msg> =>
  * @category Subscriptions
  */
 export const linkClicks = <Msg>(toMsg: (request: UrlRequest) => Msg): Sub<Msg> =>
-  Stream.async<Msg>((emit) => {
+  fromCallback<Msg>((emit) => {
     if (typeof window === 'undefined') {
-      return
+      return () => {}
     }
 
     const handler = (event: MouseEvent) => {
@@ -451,13 +469,15 @@ export const linkClicks = <Msg>(toMsg: (request: UrlRequest) => Msg): Sub<Msg> =
       // Prevent default browser navigation
       event.preventDefault()
 
-      // Determine if internal or external
+      // Determine if internal or external. Resolve against the current document
+      // URL (not the origin) so relative, query-only and hash-only hrefs match
+      // what the browser's default navigation would have produced.
       try {
-        const url = new URL(href, window.location.origin)
+        const url = new URL(href, window.location.href)
 
         if (url.origin === window.location.origin) {
           // Internal link
-          emit.single(
+          emit(
             toMsg({
               _tag: 'Internal',
               location: {
@@ -471,11 +491,11 @@ export const linkClicks = <Msg>(toMsg: (request: UrlRequest) => Msg): Sub<Msg> =
           )
         } else {
           // External link
-          emit.single(toMsg({ _tag: 'External', href: url.href }))
+          emit(toMsg({ _tag: 'External', href: url.href }))
         }
       } catch {
         // Invalid URL, treat as internal path
-        emit.single(
+        emit(
           toMsg({
             _tag: 'Internal',
             location: {
@@ -493,10 +513,10 @@ export const linkClicks = <Msg>(toMsg: (request: UrlRequest) => Msg): Sub<Msg> =
     // Use capture phase to intercept before other handlers
     window.addEventListener('click', handler, true)
 
-    return Effect.sync(() => {
+    return () => {
       window.removeEventListener('click', handler, true)
-    })
-  })
+    }
+  }, 'navigation:linkClicks')
 
 // -------------------------------------------------------------------------------------
 // Program
@@ -619,10 +639,6 @@ export const program = <Model, Msg, Dom, E = never, R = never>(
     onUrlChange
   } = config
 
-  // Get initial location and create init tuple
-  const initialLocation = getLocation()
-  const initTuple = init(initialLocation)
-
   // Create combined subscriptions that include navigation
   const combinedSubscriptions = (model: Model): Sub<Msg, E, R> =>
     subBatch([
@@ -631,6 +647,11 @@ export const program = <Model, Msg, Dom, E = never, R = never>(
       urlChanges(onUrlChange) as Sub<Msg, E, R>
     ])
 
-  return Html.program(initTuple, update, view, combinedSubscriptions)
+  // Read the location and call init when the program actually starts (deferred),
+  // not while constructing the returned Effect, so a URL change before run and
+  // re-runs both see the current URL.
+  return Effect.suspend(() =>
+    Html.program(init(getLocation()), update, view, combinedSubscriptions)
+  )
 }
 
