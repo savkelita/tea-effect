@@ -156,23 +156,33 @@ export const program = <Model, Msg, E = never, R = never>(
     const subFibers = new Map<string, Fiber.RuntimeFiber<void, never>>()
     const diffSubs = (model: Model): Effect.Effect<void, never, R> =>
       Effect.gen(function* () {
-        const entries = getSubEntries(subscriptions(model))
-        const nextKeys = new Set(entries.map(e => e.key))
+        // Group by key so several subscriptions sharing a key (e.g. two batched
+        // urlChanges, or a keep-alive DOM source used more than once) all run
+        // under one fiber instead of the extras being silently dropped.
+        const byKey = new Map<string, Array<Sub<Msg, E, R>>>()
+        for (const entry of getSubEntries(subscriptions(model))) {
+          const list = byKey.get(entry.key)
+          if (list) list.push(entry.stream)
+          else byKey.set(entry.key, [entry.stream])
+        }
         for (const [key, fiber] of subFibers) {
-          if (!nextKeys.has(key)) {
+          if (!byKey.has(key)) {
             yield* Fiber.interrupt(fiber)
             subFibers.delete(key)
           }
         }
-        for (const entry of entries) {
-          if (!subFibers.has(entry.key)) {
+        for (const [key, streams] of byKey) {
+          if (!subFibers.has(key)) {
+            const merged = streams.length === 1
+              ? streams[0]
+              : Stream.mergeAll(streams, { concurrency: 'unbounded' })
             const fiber = yield* Effect.forkIn(progScope)(
               pipe(
-                Stream.runForEach(entry.stream, (msg: Msg) => Queue.offer(msgQueue, msg)),
+                Stream.runForEach(merged, (msg: Msg) => Queue.offer(msgQueue, msg)),
                 Effect.catchAllCause(surfaceCause)
               )
             )
-            subFibers.set(entry.key, fiber)
+            subFibers.set(key, fiber)
           }
         }
       })
