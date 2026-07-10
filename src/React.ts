@@ -197,8 +197,13 @@ export const makeUseProgram = (React: ReactLike) => {
     init: readonly [Model, Cmd<Msg, E, R>],
     update: (msg: Msg, model: Model) => readonly [Model, Cmd<Msg, E, R>],
     subscriptions: (model: Model) => Sub<Msg, E, R> = () => subNone,
-    options: UseProgramOptions<R> = {}
+    // runtime is required exactly when Cmds/Subs need services (R is not never),
+    // so the defaultRuntime fallback below is only reachable (and sound) for R = never.
+    ...rest: [R] extends [never]
+      ? [options?: UseProgramOptions<never>]
+      : [options: { readonly runtime: Runtime.Runtime<R> }]
   ): UseProgramResult<Model, Msg> => {
+    const options = (rest[0] ?? {}) as UseProgramOptions<R>
     const [initialModel] = init
     // Thunk-wrap so a function-typed Model is stored, not called as a lazy init.
     const [model, setModel] = useState<Model>(() => initialModel)
