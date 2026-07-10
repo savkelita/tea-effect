@@ -54,8 +54,41 @@ const withEntries = <Msg, E, R>(
 const keyed = <Msg, E, R>(key: string, stream: Stream.Stream<Msg, E, R>): Sub<Msg, E, R> =>
   withEntries(stream, [{ key, stream }])
 
+/**
+ * Attach a stable key to a raw subscription stream so the runtime keeps it alive
+ * across model changes (used by subscriptions whose stream is not built from a
+ * keyed constructor, e.g. LocalStorage.onChange).
+ *
+ * @since 0.6.0
+ * @category Model
+ */
+export const withKey = <Msg, E, R>(key: string, stream: Stream.Stream<Msg, E, R>): Sub<Msg, E, R> =>
+  keyed(key, stream)
+
+// Stable per-function id so map/filter over the same source with DIFFERENT
+// taggers get DISTINCT keys (else the runtime would drop/misroute one), while a
+// referentially-stable tagger keeps a stable key across model changes.
+const fnIds = new WeakMap<Function, number>()
+let fnCounter = 0
+const fnId = (f: Function): number => {
+  let id = fnIds.get(f)
+  if (id === undefined) {
+    id = fnCounter++
+    fnIds.set(f, id)
+  }
+  return id
+}
+
 const stableStringify = (value: unknown): string => {
+  // Make the serializer injective for values JSON.stringify flattens (NaN /
+  // Infinity / null all -> "null"; undefined/function properties dropped), so
+  // distinct messages never collide onto the same subscription key.
   const norm = (v: any): any => {
+    if (typeof v === 'number' && !Number.isFinite(v)) return { $num: String(v) }
+    if (v === undefined) return { $undef: true }
+    if (typeof v === 'function' || typeof v === 'symbol' || typeof v === 'bigint') {
+      return { $nonserializable: typeof v }
+    }
     if (v && typeof v === 'object') {
       if (Array.isArray(v)) return v.map(norm)
       return Object.keys(v)
@@ -169,7 +202,7 @@ export const map =
   <A, Msg>(f: (a: A) => Msg) =>
   <E, R>(sub: Sub<A, E, R>): Sub<Msg, E, R> => {
     const entries = getSubEntries(sub).map((e) => ({
-      key: `${e.key}:map`,
+      key: `${e.key}:map:${fnId(f)}`,
       stream: Stream.map(e.stream, f)
     }))
     return withEntries(Stream.map(sub, f), entries)
@@ -203,7 +236,7 @@ export const filter =
   <Msg>(predicate: (msg: Msg) => boolean) =>
   <E, R>(sub: Sub<Msg, E, R>): Sub<Msg, E, R> => {
     const entries = getSubEntries(sub).map((e) => ({
-      key: `${e.key}:filter`,
+      key: `${e.key}:filter:${fnId(predicate)}`,
       stream: Stream.filter(e.stream, predicate)
     }))
     return withEntries(Stream.filter(sub, predicate), entries)

@@ -106,10 +106,26 @@ describe('Sub', () => {
       const base = Sub.interval(100, 1)
       const mapped = Sub.map((n: number) => n + 1)(base)
       expect(Sub.getSubEntries(mapped)).toHaveLength(1)
-      expect(Sub.getSubEntries(mapped)[0].key.endsWith(':map')).toBe(true)
+      expect(Sub.getSubEntries(mapped)[0].key).toContain(':map:')
 
       const filtered = Sub.filter((n: number) => n > 0)(base)
-      expect(Sub.getSubEntries(filtered)[0].key.endsWith(':filter')).toBe(true)
+      expect(Sub.getSubEntries(filtered)[0].key).toContain(':filter:')
+    })
+
+    it('#1(regression): map/filter with distinct functions get distinct keys', () => {
+      const base = Sub.interval(100, 1)
+      const fa = (n: number) => n + 1
+      const fb = (n: number) => n + 2
+      expect(Sub.getSubEntries(Sub.map(fa)(base))[0].key).not.toBe(Sub.getSubEntries(Sub.map(fb)(base))[0].key)
+      // same function reference -> stable key (kept alive across model changes)
+      expect(Sub.getSubEntries(Sub.map(fa)(base))[0].key).toBe(Sub.getSubEntries(Sub.map(fa)(base))[0].key)
+    })
+
+    it('#1(regression): stableStringify does not collapse NaN/Infinity/null or undefined fields', () => {
+      const k = (s: Sub.Sub<any>) => Sub.getSubEntries(s)[0].key
+      expect(k(Sub.of(NaN))).not.toBe(k(Sub.of(Infinity)))
+      expect(k(Sub.of(null as any))).not.toBe(k(Sub.of(NaN as any)))
+      expect(k(Sub.of({ a: undefined }))).not.toBe(k(Sub.of({})))
     })
 
     it('#1: none has no entries', () => {
