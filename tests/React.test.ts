@@ -104,4 +104,87 @@ describe('React', () => {
       expect(typeof html).toBe('function')
     })
   })
+
+  // Regression tests for audited bugs (see AUDIT.md). A minimal ReactLike
+  // harness mimics render-then-flush-effects ordering and React's real
+  // useState/setState function semantics.
+  describe('AUDIT regressions', () => {
+    const makeHarness = () => {
+      const states: any[] = []
+      const refs: any[] = []
+      let effects: Array<() => void | (() => void)> = []
+      let si = 0
+      let ri = 0
+      const React: TeaReact.ReactLike = {
+        useState: (init: any) => {
+          const i = si++
+          if (!(i in states)) states[i] = typeof init === 'function' ? init() : init
+          return [states[i], (v: any) => { states[i] = typeof v === 'function' ? v(states[i]) : v }]
+        },
+        useRef: (init: any) => {
+          const i = ri++
+          if (!refs[i]) refs[i] = { current: init }
+          return refs[i]
+        },
+        useEffect: (fn: any) => { effects.push(fn) }
+      }
+      return {
+        React,
+        states,
+        render(run: () => any) { si = 0; ri = 0; effects = []; return run() },
+        flush() { effects.forEach((e) => e()) }
+      }
+    }
+    const tick = (ms = 60) => new Promise((r) => setTimeout(r, ms))
+
+    it('#4: a message dispatched before the program starts is buffered and delivered', async () => {
+      type Model = { n: number }
+      type Msg = { type: 'Load' }
+      const h = makeHarness()
+      const useProgram = TeaReact.makeUseProgram(h.React)
+      const r = h.render(() =>
+        useProgram<Model, Msg>([{ n: 0 }, Cmd.none], (msg, m) => (msg.type === 'Load' ? [{ n: m.n + 1 }, Cmd.none] : [m, Cmd.none]))
+      )
+      r.dispatch({ type: 'Load' }) // before the mount effect flushes
+      h.flush()
+      await tick()
+      expect(h.states[0].n).toBe(1)
+    })
+
+    it('#15: the program uses the latest update closure, not the first render\'s', async () => {
+      type Model = { sends: number }
+      type Msg = { type: 'Send' }
+      const sends: string[] = []
+      const h = makeHarness()
+      const useProgram = TeaReact.makeUseProgram(h.React)
+      const renderWith = (userId: string) =>
+        h.render(() =>
+          useProgram<Model, Msg>([{ sends: 0 }, Cmd.none], (msg, m) =>
+            msg.type === 'Send' ? (sends.push(userId), [{ sends: m.sends + 1 }, Cmd.none]) : [m, Cmd.none]
+          )
+        )
+      renderWith('alice')
+      h.flush()
+      await tick()
+      const r = renderWith('bob') // re-render with a new prop; [] deps effect does not re-run
+      r.dispatch({ type: 'Send' })
+      r.dispatch({ type: 'Send' })
+      await tick()
+      expect(sends).toEqual(['bob', 'bob'])
+    })
+
+    it('#28: a function-typed model is stored, not invoked', async () => {
+      type Model = (input: string) => boolean
+      type Msg = { type: 'Noop' }
+      const validator: Model = (s) => s.length > 0
+      const h = makeHarness()
+      const useProgram = TeaReact.makeUseProgram(h.React)
+      h.render(() => useProgram<Model, Msg>([validator, Cmd.none], (_msg, m) => [m, Cmd.none]))
+      h.flush()
+      await tick()
+      expect(typeof h.states[0]).toBe('function')
+      expect(h.states[0]).toBe(validator)
+      expect(h.states[0]('hello')).toBe(true)
+    })
+  })
 })

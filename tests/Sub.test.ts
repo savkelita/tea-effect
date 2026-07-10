@@ -82,4 +82,38 @@ describe('Sub', () => {
       expect(Array.from(messages)).toEqual(['hello', 'world'])
     })
   })
+
+  // Regression tests for audited bugs (see AUDIT.md).
+  describe('AUDIT regressions', () => {
+    const keys = <M>(sub: Sub.Sub<M>) => Sub.getSubEntries(sub).map((e) => e.key)
+
+    it('#1: interval has a stable key derived from its args', () => {
+      expect(keys(Sub.interval(300, { type: 'Tick' }))).toEqual(keys(Sub.interval(300, { type: 'Tick' })))
+      expect(keys(Sub.interval(300, { type: 'Tick' }))[0]).not.toBe(keys(Sub.interval(500, { type: 'Tick' }))[0])
+    })
+
+    it('#1: of has a stable key derived from the message', () => {
+      expect(keys(Sub.of('a'))).toEqual(keys(Sub.of('a')))
+      expect(keys(Sub.of('a'))[0]).not.toBe(keys(Sub.of('b'))[0])
+    })
+
+    it('#1: batch flattens child entries', () => {
+      const sub = Sub.batch([Sub.interval(100, { type: 'A' }), Sub.interval(200, { type: 'B' })])
+      expect(Sub.getSubEntries(sub)).toHaveLength(2)
+    })
+
+    it('#1: map/filter keep one entry per source and suffix the key', () => {
+      const base = Sub.interval(100, 1)
+      const mapped = Sub.map((n: number) => n + 1)(base)
+      expect(Sub.getSubEntries(mapped)).toHaveLength(1)
+      expect(Sub.getSubEntries(mapped)[0].key.endsWith(':map')).toBe(true)
+
+      const filtered = Sub.filter((n: number) => n > 0)(base)
+      expect(Sub.getSubEntries(filtered)[0].key.endsWith(':filter')).toBe(true)
+    })
+
+    it('#1: none has no entries', () => {
+      expect(Sub.getSubEntries(Sub.none)).toHaveLength(0)
+    })
+  })
 })

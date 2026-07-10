@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { Effect, Option, Schema, Stream, Chunk } from 'effect'
+import { Effect, Option, Schema, Stream, Chunk, Exit } from 'effect'
 import * as LocalStorage from '../src/LocalStorage'
 
 // Mock localStorage
@@ -348,6 +348,100 @@ describe('LocalStorage', () => {
       mockStorage._setStore({ a: '1', b: '2' })
       const result = await Effect.runPromise(LocalStorage.keysTask)
       expect(result).toEqual(['a', 'b'])
+    })
+  })
+
+  // Regression tests for audited bugs (see AUDIT.md).
+  describe('AUDIT regressions', () => {
+    const mkStore = () => {
+      let s: Record<string, string> = {}
+      return {
+        getItem: (k: string) => (k in s ? s[k] : null),
+        setItem: (k: string, v: string) => { s[k] = String(v) },
+        removeItem: (k: string) => { delete s[k] },
+        clear: () => { s = {} },
+        key: (i: number) => Object.keys(s)[i] ?? null,
+        get length() { return Object.keys(s).length }
+      }
+    }
+    const installWindow = () => {
+      const listeners: Array<(e: any) => void> = []
+      const localStorage = mkStore()
+      const sessionStorage = mkStore()
+      ;(global as any).window = {
+        localStorage,
+        sessionStorage,
+        addEventListener: (_t: string, h: any) => { listeners.push(h) },
+        removeEventListener: (_t: string, h: any) => {
+          const i = listeners.indexOf(h)
+          if (i >= 0) listeners.splice(i, 1)
+        }
+      }
+      return { listeners, localStorage, sessionStorage }
+    }
+    const Counter = Schema.Struct({ n: Schema.Number })
+
+    it('#33: a value that encodes to undefined fails as EncodeError and is not stored', async () => {
+      const { localStorage } = installWindow()
+      const exit = await Effect.runPromiseExit(
+        LocalStorage.setTask('draft', Schema.UndefinedOr(Schema.String), undefined)
+      )
+      expect(Exit.isFailure(exit)).toBe(true)
+      expect(localStorage.getItem('draft')).toBeNull()
+    })
+
+    it('#24: subscriptions no-op under SSR (no window) instead of defecting', async () => {
+      delete (global as any).window
+      const exit = await Effect.runPromiseExit(
+        Effect.raceFirst(
+          Stream.runDrain(
+            LocalStorage.onChange('k', Counter, { onSuccess: () => 0, onError: () => 1 })
+          ).pipe(Effect.as('drained' as const)),
+          Effect.sleep('80 millis').pipe(Effect.as('ok' as const))
+        )
+      )
+      expect(Exit.isSuccess(exit)).toBe(true)
+    })
+
+    it('#11: onChange removes its storage listener on teardown (no leak)', async () => {
+      const { listeners } = installWindow()
+      for (let i = 0; i < 3; i++) {
+        await Effect.runPromise(
+          Effect.scoped(
+            Effect.gen(function* () {
+              yield* Effect.forkScoped(
+                Stream.runDrain(LocalStorage.onChange('c', Counter, { onSuccess: () => 0, onError: () => 1 }))
+              )
+              yield* Effect.sleep('20 millis')
+            })
+          )
+        )
+      }
+      expect(listeners.length).toBe(0)
+    })
+
+    it('#32: onChange ignores sessionStorage events', async () => {
+      const { listeners, sessionStorage } = installWindow()
+      let got: unknown = 'none'
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            yield* Effect.forkScoped(
+              Stream.runForEach(
+                LocalStorage.onChange('c', Counter, {
+                  onSuccess: (d) => { got = Option.isSome(d) ? d.value : 'none'; return 0 },
+                  onError: () => 1
+                }),
+                () => Effect.void
+              )
+            )
+            yield* Effect.sleep('20 millis')
+            listeners.forEach((h) => h({ key: 'c', newValue: '{"n":999}', oldValue: null, storageArea: sessionStorage }))
+            yield* Effect.sleep('40 millis')
+          })
+        )
+      )
+      expect(got).toBe('none')
     })
   })
 })

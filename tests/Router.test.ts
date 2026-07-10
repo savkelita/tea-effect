@@ -386,4 +386,96 @@ describe('Router', () => {
       expect(userRoute._tag).toBe('user')
     })
   })
+
+  // Regression tests for audited bugs (see AUDIT.md).
+  describe('AUDIT regressions', () => {
+    const parseUrl = <T extends Router.Routes<any>>(routes: T, url: string) => {
+      const u = new URL('http://x' + url)
+      return Router.parse(routes, { pathname: u.pathname, search: u.search })
+    }
+
+    it('#9/#10: percent-encodes/decodes path segments so format→parse round-trips', () => {
+      const routes = Router.routes({ user: Router.path('/users/:name') })
+      for (const name of ['a/b', 'john doe', 'a?b#c', 'café']) {
+        const url = Router.format(routes.user, { name })
+        const parsed = parseUrl(routes, url)
+        expect(Option.isSome(parsed)).toBe(true)
+        if (Option.isSome(parsed)) {
+          expect((parsed.value as any).params.name).toBe(name)
+        }
+      }
+    })
+
+    it('#19: optionalWith-default query schema does not leak the path param', () => {
+      const routes = Router.routes({
+        user: Router.path('/users/:id', { id: Schema.NumberFromString }).query(
+          Schema.Struct({
+            tab: Schema.String,
+            page: Schema.optionalWith(Schema.NumberFromString, { default: () => 1 })
+          })
+        )
+      })
+      const url = Router.format(routes.user, { id: 7, tab: 'posts', page: 3 } as any)
+      expect(url).not.toContain('id=')
+      expect(url).toContain('tab=posts')
+      expect(url).toContain('page=3')
+    })
+
+    it('#20: Record query schema does not drop query params', () => {
+      const routes = Router.routes({
+        search: Router.path('/search').query(Schema.Record({ key: Schema.String, value: Schema.String }))
+      })
+      const url = Router.format(routes.search, { q: 'hello', page: '2' } as any)
+      expect(url).toContain('q=hello')
+      expect(url).toContain('page=2')
+    })
+
+    it('#21: path and query params format through the schema encoder (round-trip)', () => {
+      const Hex = Schema.transform(Schema.String, Schema.Number, {
+        decode: (s) => parseInt(s, 16),
+        encode: (n) => n.toString(16)
+      })
+      const routes = Router.routes({
+        item: Router.path('/item/:id', { id: Hex }).query(Schema.Struct({ n: Hex }))
+      })
+      const url = Router.format(routes.item, { id: 255, n: 254 } as any)
+      expect(url).toBe('/item/ff?n=fe')
+      const back = parseUrl(routes, url)
+      expect(Option.isSome(back)).toBe(true)
+      if (Option.isSome(back)) {
+        expect((back.value as any).params.id).toBe(255)
+        expect((back.value as any).query.n).toBe(254)
+      }
+    })
+
+    it('#22: query key colliding with a path param is rejected at definition time', () => {
+      expect(() =>
+        Router.routes({
+          user: Router.path('/users/:id', { id: Schema.NumberFromString }).query(
+            Schema.Struct({ id: Schema.String })
+          )
+        })
+      ).toThrow(/collide/)
+    })
+
+    it('#30: a literal colon segment does not add a spurious params object', () => {
+      const routes = Router.routes({
+        time: Router.path('/time/12:30').query(Schema.Struct({ zone: Schema.String }))
+      })
+      const parsed = parseUrl(routes, '/time/12:30?zone=utc')
+      expect(Option.isSome(parsed)).toBe(true)
+      if (Option.isSome(parsed)) {
+        expect('params' in parsed.value).toBe(false)
+        expect((parsed.value as any).query.zone).toBe('utc')
+      }
+    })
+
+    it('#31: IntFromString rejects NaN/Infinity/floats but accepts integers', () => {
+      const routes = Router.routes({ user: Router.path('/users/:id', { id: Router.IntFromString }) })
+      expect(Option.isSome(parseUrl(routes, '/users/42'))).toBe(true)
+      for (const bad of ['/users/Infinity', '/users/-Infinity', '/users/NaN', '/users/3.14']) {
+        expect(Option.isNone(parseUrl(routes, bad))).toBe(true)
+      }
+    })
+  })
 })

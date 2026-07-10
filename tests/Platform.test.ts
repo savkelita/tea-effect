@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { Effect, Stream } from 'effect'
+import { Effect, Stream, Exit } from 'effect'
 import * as Platform from '../src/Platform'
 import * as Cmd from '../src/Cmd'
 import * as Sub from '../src/Sub'
@@ -160,6 +160,119 @@ describe('Platform', () => {
             expect(firstModel._tag).toBe('Some')
 
             yield* program.shutdown
+          })
+        )
+      )
+    })
+  })
+
+  // Regression tests for audited bugs (see AUDIT.md).
+  describe('AUDIT regressions', () => {
+    // Exit.Failure => model$ surfaced an error/defect (fixed); Exit.Success
+    // ('timeout') => it stayed silent (regressed). Effect.exit captures both
+    // typed failures and defects (a throw in update becomes a defect).
+    const drainOutcome = (model$: Stream.Stream<any, any, never>) =>
+      Effect.raceFirst(
+        Stream.runDrain(model$).pipe(Effect.as('drained' as const)),
+        Effect.sleep('600 millis').pipe(Effect.as('timeout' as const))
+      ).pipe(Effect.exit)
+
+    it('#1: a timer subscription is not starved by frequent unrelated messages', async () => {
+      type M = { bumps: number; ticks: number }
+      type Msg = { type: 'Bump' } | { type: 'Tick' }
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const prog = yield* Platform.program<M, Msg>(
+              [{ bumps: 0, ticks: 0 }, Cmd.none],
+              (msg, m) =>
+                msg.type === 'Bump'
+                  ? [{ ...m, bumps: m.bumps + 1 }, Cmd.none]
+                  : [{ ...m, ticks: m.ticks + 1 }, Cmd.none],
+              () => Sub.interval(100, { type: 'Tick' })
+            )
+            let latest: M = { bumps: 0, ticks: 0 }
+            yield* Effect.forkScoped(
+              Stream.runForEach(prog.model$, (m) => Effect.sync(() => { latest = m }))
+            )
+            for (let i = 0; i < 15; i++) {
+              prog.dispatch({ type: 'Bump' })
+              yield* Effect.sleep('30 millis')
+            }
+            yield* Effect.sleep('150 millis')
+            yield* prog.shutdown
+            // switch-restart delivered 0 ticks here; keyed diffing keeps it alive.
+            expect(latest.ticks).toBeGreaterThan(0)
+            expect(latest.bumps).toBe(15)
+          })
+        )
+      )
+    }, 10000)
+
+    it('#3: a failing Cmd surfaces on model$', async () => {
+      const outcome = await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const prog = yield* Platform.program<{ n: number }, { type: 'X' }, string>(
+              [{ n: 0 }, Cmd.fromEffect(Effect.fail('boom'))],
+              (_msg, m) => [m, Cmd.none]
+            )
+            return yield* drainOutcome(prog.model$)
+          })
+        )
+      )
+      expect(Exit.isFailure(outcome)).toBe(true)
+    }, 10000)
+
+    it('#2: a failing subscription surfaces on model$', async () => {
+      const outcome = await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const failingSub: Sub.Sub<{ type: 'X' }, string> = Stream.fromEffect(Effect.fail('subboom'))
+            const prog = yield* Platform.program<{ n: number }, { type: 'X' }, string>(
+              [{ n: 0 }, Cmd.none],
+              (_msg, m) => [m, Cmd.none],
+              () => failingSub
+            )
+            return yield* drainOutcome(prog.model$)
+          })
+        )
+      )
+      expect(Exit.isFailure(outcome)).toBe(true)
+    }, 10000)
+
+    it('#12: a synchronous throw in update surfaces on model$', async () => {
+      const outcome = await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const prog = yield* Platform.program<{ n: number }, { type: 'Boom' }>(
+              [{ n: 0 }, Cmd.none],
+              (): readonly [{ n: number }, Cmd.Cmd<{ type: 'Boom' }>] => {
+                throw new Error('update boom')
+              }
+            )
+            yield* Effect.forkScoped(
+              Effect.sleep('50 millis').pipe(
+                Effect.flatMap(() => Effect.sync(() => prog.dispatch({ type: 'Boom' })))
+              )
+            )
+            return yield* drainOutcome(prog.model$)
+          })
+        )
+      )
+      expect(Exit.isFailure(outcome)).toBe(true)
+    }, 10000)
+
+    it('#13: dispatch after shutdown is a silent no-op', async () => {
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const prog = yield* Platform.program<{ n: number }, { type: 'Inc' }>(
+              [{ n: 0 }, Cmd.none],
+              (_m, m) => [{ n: m.n + 1 }, Cmd.none]
+            )
+            yield* prog.shutdown
+            expect(() => prog.dispatch({ type: 'Inc' })).not.toThrow()
           })
         )
       )
