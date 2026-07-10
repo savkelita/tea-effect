@@ -209,7 +209,11 @@ export const path = <
       }
       const queryMatcher: Matcher.Matcher<Q> = {
         parser: Parser.query(querySchema),
-        formatter: Formatter.query<Q>(queryKeys, paramKeys)
+        formatter: Formatter.query<Q>(
+          queryKeys,
+          paramKeys,
+          Schema.encodeSync(querySchema) as (q: Record<string, unknown>) => Record<string, unknown>
+        )
       }
       return {
         _tag: '',
