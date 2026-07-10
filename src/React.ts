@@ -219,6 +219,9 @@ export const makeUseProgram = (React: ReactLike) => {
     subscriptionsRef.current = subscriptions
 
     useEffect(() => {
+      // Guards against a torn-down program's fibers writing React state after
+      // cleanup (StrictMode remount shares this component's setModel).
+      let active = true
       const runtime = options.runtime ?? Runtime.defaultRuntime as Runtime.Runtime<R>
 
       const setup = Effect.scoped(
@@ -239,7 +242,7 @@ export const makeUseProgram = (React: ReactLike) => {
           // Subscribe to model updates from PubSub - push-based!
           yield* pipe(
             prog.model$,
-            Stream.tap(newModel => Effect.sync(() => setModel(() => newModel))),
+            Stream.tap(newModel => Effect.sync(() => { if (active) setModel(() => newModel) })),
             Stream.runDrain
           )
         })
@@ -249,6 +252,7 @@ export const makeUseProgram = (React: ReactLike) => {
       fiberRef.current = fiber
 
       return () => {
+        active = false
         // Re-buffer post-unmount dispatches (e.g. StrictMode remount) rather
         // than sending them into a shut-down program.
         dispatchRef.current = (msg) => {
