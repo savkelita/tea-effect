@@ -22,7 +22,7 @@
  * const routes = Router.routes({
  *   home: Router.path('/'),
  *   users: Router.path('/users'),
- *   user: Router.path('/users/:id', { id: Schema.NumberFromString }),
+ *   user: Router.path('/users/:id', { id: Router.IntFromString }),
  *   search: Router.path('/search').query(
  *     Schema.Struct({
  *       q: Schema.String,
@@ -62,6 +62,15 @@ export { Route } from './Router/Route'
 export * as Parser from './Router/Parser'
 export * as Formatter from './Router/Formatter'
 export * as Matcher from './Router/Matcher'
+
+/**
+ * A path-param schema for integer ids that rejects 'NaN', 'Infinity' and
+ * non-integers, unlike bare `Schema.NumberFromString`.
+ *
+ * @since 0.6.0
+ * @category Schemas
+ */
+export const IntFromString: Schema.Schema<number, string> = Schema.NumberFromString.pipe(Schema.int())
 
 // -------------------------------------------------------------------------------------
 // Path Pattern Types
