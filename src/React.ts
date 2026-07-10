@@ -211,12 +211,23 @@ export const makeUseProgram = (React: ReactLike) => {
       pendingRef.current.push(msg)
     })
 
+    // Latest-ref for update/subscriptions so the once-started program always
+    // calls the current closures (matching React useReducer), not first-render ones.
+    const updateRef = useRef(update)
+    updateRef.current = update
+    const subscriptionsRef = useRef(subscriptions)
+    subscriptionsRef.current = subscriptions
+
     useEffect(() => {
       const runtime = options.runtime ?? Runtime.defaultRuntime as Runtime.Runtime<R>
 
       const setup = Effect.scoped(
         Effect.gen(function* () {
-          const prog = yield* Platform.program(init, update, subscriptions)
+          const prog = yield* Platform.program(
+            init,
+            (msg, m) => updateRef.current(msg, m),
+            (m) => subscriptionsRef.current(m)
+          )
 
           programRef.current = prog
           dispatchRef.current = prog.dispatch
