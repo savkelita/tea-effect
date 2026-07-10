@@ -6,7 +6,7 @@
  *
  * @since 0.1.0
  */
-import { Effect, Stream, SubscriptionRef, Queue, Fiber, pipe, Scope, Deferred, Cause } from 'effect'
+import { Effect, Stream, SubscriptionRef, Queue, pipe, Scope, Exit, Deferred, Cause } from 'effect'
 import { Cmd } from './Cmd'
 import { Sub, none as subNone } from './Sub'
 
@@ -104,19 +104,27 @@ export const program = <Model, Msg, E = never, R = never>(
     const surfaceCause = (cause: Cause.Cause<E>) =>
       Cause.isInterruptedOnly(cause) ? Effect.void : Deferred.failCause(errSignal, cause)
 
-    // Dispatch function - adds message to queue
+    // Program-owned scope so shutdown interrupts in-flight cmd fibers and both
+    // loops; closing the ambient scope tears it down too.
+    const progScope = yield* Scope.make()
+    yield* Effect.addFinalizer(() => Scope.close(progScope, Exit.void))
+
+    let stopped = false
+
+    // Dispatch function - adds message to queue (no-op after shutdown)
     const dispatch: Dispatch<Msg> = (msg) => {
+      if (stopped) return
       Effect.runSync(Queue.offer(msgQueue, msg))
     }
 
     // Process a command - run the stream and dispatch messages as they arrive
     // Commands are forked so they run concurrently (matching Elm's semantics)
-    const processCmd = (cmd: Cmd<Msg, E, R>): Effect.Effect<void, E, R | Scope.Scope> =>
+    const processCmd = (cmd: Cmd<Msg, E, R>): Effect.Effect<void, never, R> =>
       pipe(
         cmd,
         Stream.runForEach(msg => Queue.offer(msgQueue, msg)),
         Effect.catchAllCause(surfaceCause),
-        Effect.forkScoped,
+        Effect.forkIn(progScope),
         Effect.asVoid
       )
 
@@ -124,7 +132,7 @@ export const program = <Model, Msg, E = never, R = never>(
     yield* processCmd(initialCmd)
 
     // Main update loop - processes messages and updates SubscriptionRef
-    const updateLoop: Effect.Effect<never, E, R | Scope.Scope> = Effect.forever(
+    const updateLoop: Effect.Effect<never, E, R> = Effect.forever(
       Effect.gen(function* () {
         const isShutdown = yield* SubscriptionRef.get(shutdownRef)
         if (isShutdown) {
@@ -151,9 +159,9 @@ export const program = <Model, Msg, E = never, R = never>(
       Stream.runDrain
     )
 
-    // Start loops in background
-    const updateFiber = yield* Effect.forkScoped(Effect.catchAllCause(updateLoop, surfaceCause))
-    const subFiber = yield* Effect.forkScoped(Effect.catchAllCause(subscriptionLoop, surfaceCause))
+    // Start loops in the program scope
+    yield* Effect.forkIn(progScope)(Effect.catchAllCause(updateLoop, surfaceCause))
+    yield* Effect.forkIn(progScope)(Effect.catchAllCause(subscriptionLoop, surfaceCause))
 
     // Model stream: SubscriptionRef.changes merged with the error signal, so a
     // failing cmd/sub/update surfaces on model$ (honoring the declared E).
@@ -162,11 +170,13 @@ export const program = <Model, Msg, E = never, R = never>(
       Stream.fromEffect(Deferred.await(errSignal))
     ) as Stream.Stream<Model, E, R>
 
-    // Shutdown function
+    // Shutdown: stop dispatch, shut the queue, and close the program scope
+    // (interrupting both loops and every in-flight cmd fiber).
     const shutdown = Effect.gen(function* () {
+      stopped = true
       yield* SubscriptionRef.set(shutdownRef, true)
-      yield* Fiber.interrupt(updateFiber)
-      yield* Fiber.interrupt(subFiber)
+      yield* Queue.shutdown(msgQueue)
+      yield* Scope.close(progScope, Exit.void)
     })
 
     return {
