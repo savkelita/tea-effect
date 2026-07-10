@@ -42,7 +42,7 @@ describe('Http', () => {
     })
 
     it('should have expectString', () => {
-      expect(Http.expectString._tag).toBe('ExpectJson')
+      expect(Http.expectString._tag).toBe('ExpectString')
     })
 
     it('should have expectWhatever', () => {
