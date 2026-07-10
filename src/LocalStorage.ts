@@ -151,12 +151,15 @@ export const setTask = <A, I>(
   Effect.gen(function* () {
     const storage = yield* getStorage()
 
-    const encoded = yield* Schema.encode(schema)(value).pipe(
+    // Encode straight to a JSON string via Schema. A value that can't serialize
+    // (e.g. encodes to undefined) fails as EncodeError instead of storing the
+    // literal string "undefined" and breaking the next get.
+    const json = yield* Schema.encode(Schema.parseJson(schema))(value).pipe(
       Effect.mapError((error) => encodeError(key, error))
     )
 
     yield* Effect.try({
-      try: () => storage.setItem(key, JSON.stringify(encoded)),
+      try: () => storage.setItem(key, json),
       catch: (error) =>
         error instanceof DOMException && error.name === 'QuotaExceededError'
           ? quotaExceeded(key)
@@ -391,15 +394,25 @@ export const onChange = <A, I, Msg>(
   }
 ): Sub.Sub<Msg> =>
   Stream.asyncPush<StorageEvent>((emit) =>
-    Effect.sync(() => {
-      const handler = (event: StorageEvent) => {
-        if (event.key === key || event.key === null) {
-          emit.single(event)
+    Effect.acquireRelease(
+      Effect.sync(() => {
+        if (typeof window === 'undefined') {
+          return null
         }
-      }
-      window.addEventListener('storage', handler)
-      return Effect.sync(() => window.removeEventListener('storage', handler))
-    })
+        const handler = (event: StorageEvent) => {
+          if (event.storageArea === window.localStorage && (event.key === key || event.key === null)) {
+            emit.single(event)
+          }
+        }
+        window.addEventListener('storage', handler)
+        return handler
+      }),
+      (handler) => Effect.sync(() => {
+        if (handler !== null) {
+          window.removeEventListener('storage', handler)
+        }
+      })
+    )
   ).pipe(
     Stream.mapEffect((event) => {
       if (event.newValue === null) {
@@ -434,14 +447,17 @@ export const onChangeRaw = <Msg>(
   toMsg: (result: Option.Option<string>) => Msg
 ): Sub.Sub<Msg> =>
   Sub.fromCallback<Msg>((emit) => {
+    if (typeof window === 'undefined') {
+      return () => {}
+    }
     const handler = (event: StorageEvent) => {
-      if (event.key === key || event.key === null) {
+      if (event.storageArea === window.localStorage && (event.key === key || event.key === null)) {
         emit(toMsg(event.newValue === null ? Option.none() : Option.some(event.newValue)))
       }
     }
     window.addEventListener('storage', handler)
     return () => window.removeEventListener('storage', handler)
-  })
+  }, `localStorage:onChangeRaw:${key}`)
 
 /**
  * Subscribes to ALL storage changes from OTHER browser tabs/windows.
@@ -453,7 +469,13 @@ export const onAnyChange = <Msg>(
   toMsg: (event: { key: Option.Option<string>; newValue: Option.Option<string>; oldValue: Option.Option<string> }) => Msg
 ): Sub.Sub<Msg> =>
   Sub.fromCallback<Msg>((emit) => {
+    if (typeof window === 'undefined') {
+      return () => {}
+    }
     const handler = (event: StorageEvent) => {
+      if (event.storageArea !== window.localStorage) {
+        return
+      }
       emit(toMsg({
         key: event.key === null ? Option.none() : Option.some(event.key),
         newValue: event.newValue === null ? Option.none() : Option.some(event.newValue),
@@ -462,4 +484,4 @@ export const onAnyChange = <Msg>(
     }
     window.addEventListener('storage', handler)
     return () => window.removeEventListener('storage', handler)
-  })
+  }, 'localStorage:onAnyChange')
