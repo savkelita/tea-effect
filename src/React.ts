@@ -200,7 +200,8 @@ export const makeUseProgram = (React: ReactLike) => {
     options: UseProgramOptions<R> = {}
   ): UseProgramResult<Model, Msg> => {
     const [initialModel] = init
-    const [model, setModel] = useState<Model>(initialModel)
+    // Thunk-wrap so a function-typed Model is stored, not called as a lazy init.
+    const [model, setModel] = useState<Model>(() => initialModel)
     const programRef = useRef<Platform.Program<Model, Msg, E, R> | null>(null)
     const fiberRef = useRef<Fiber.RuntimeFiber<void, E> | null>(null)
     const dispatchRef = useRef<Platform.Dispatch<Msg>>(() => {})
@@ -218,7 +219,7 @@ export const makeUseProgram = (React: ReactLike) => {
           // Subscribe to model updates from PubSub - push-based!
           yield* pipe(
             prog.model$,
-            Stream.tap(newModel => Effect.sync(() => setModel(newModel))),
+            Stream.tap(newModel => Effect.sync(() => setModel(() => newModel))),
             Stream.runDrain
           )
         })
