@@ -194,7 +194,7 @@ export const path = <
       const queryKeys = getSchemaKeys(querySchema)
       const queryMatcher: Matcher.Matcher<Q> = {
         parser: Parser.query(querySchema),
-        formatter: Formatter.query<Q>(queryKeys)
+        formatter: Formatter.query<Q>(queryKeys, paramKeys)
       }
       return {
         _tag: '',
@@ -248,11 +248,22 @@ function getSchemaKeys(schema: Schema.Schema<any, any, never>): string[] | undef
     'propertySignatures' in ast &&
     Array.isArray((ast as { propertySignatures: unknown }).propertySignatures)
   ) {
+    // A TypeLiteral carrying index signatures (e.g. Schema.Record) has keys
+    // that cannot be enumerated statically. Return undefined so the formatter
+    // falls back to emitting all runtime keys (minus path params) instead of
+    // silently dropping every query parameter.
+    const indexSignatures = (ast as { indexSignatures?: unknown }).indexSignatures
+    if (Array.isArray(indexSignatures) && indexSignatures.length > 0) {
+      return undefined
+    }
     const propertySignatures = (ast as {
       propertySignatures: Array<{ name: PropertyKey }>
     }).propertySignatures
     return propertySignatures.map(ps => String(ps.name))
   }
+  // Non-plain schemas (transforms from optionalWith, refinements, unions) have
+  // a non-TypeLiteral AST; returning undefined routes formatting through the
+  // exclude-path-params fallback, which is correct regardless of schema shape.
   return undefined
 }
 

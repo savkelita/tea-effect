@@ -110,12 +110,19 @@ export const param = <K extends string, A>(
  * @since 0.6.0
  * @category Primitives
  */
-export const query = <A extends Record<string, unknown>>(keys?: readonly string[]): Formatter<A> => ({
+export const query = <A extends Record<string, unknown>>(
+  keys?: readonly string[],
+  exclude?: readonly string[]
+): Formatter<A> => ({
   format: (params) => {
     const searchParams = new URLSearchParams()
-    const entries = keys
+    // When the query keys can be enumerated statically, use exactly those.
+    // Otherwise (unknown schema shape, e.g. transform/union/record) fall back
+    // to every runtime key EXCEPT the path params, so path params can never
+    // leak into the query string and no query param is silently dropped.
+    const entries = keys && keys.length > 0
       ? keys.map(k => [k, (params as Record<string, unknown>)[k]] as const)
-      : Object.entries(params)
+      : Object.entries(params).filter(([k]) => !(exclude ?? []).includes(k))
 
     for (const [key, value] of entries) {
       if (value === undefined || value === null) continue
