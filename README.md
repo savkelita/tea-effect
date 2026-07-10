@@ -98,14 +98,14 @@ const User = Schema.Struct({
 type User = Schema.Schema.Type<typeof User>;
 
 export type Model = {
-  users: User[];
+  users: ReadonlyArray<User>;
   loading: boolean;
   error: Option.Option<Http.HttpError>;
 };
 
 export type Msg =
   | { type: "FetchUsers" }
-  | { type: "GotUsers"; users: User[] }
+  | { type: "GotUsers"; users: ReadonlyArray<User> }
   | { type: "GotError"; error: Http.HttpError };
 
 const fetchUsers = pipe(
@@ -125,6 +125,8 @@ const renderError = (error: Http.HttpError): string => {
       return `Server error: ${error.status}`;
     case "BadBody":
       return `Invalid response: ${error.error}`;
+    case "BadRequestBody":
+      return `Invalid request body: ${error.error}`;
   }
 };
 
