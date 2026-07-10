@@ -6,7 +6,7 @@
  *
  * @since 0.1.0
  */
-import { Effect, Stream, SubscriptionRef, Queue, Fiber, pipe, Scope } from 'effect'
+import { Effect, Stream, SubscriptionRef, Queue, Fiber, pipe, Scope, Deferred, Cause } from 'effect'
 import { Cmd } from './Cmd'
 import { Sub, none as subNone } from './Sub'
 
@@ -98,6 +98,12 @@ export const program = <Model, Msg, E = never, R = never>(
     const msgQueue = yield* Queue.unbounded<Msg>()
     const shutdownRef = yield* SubscriptionRef.make(false)
 
+    // Failures/defects from forked cmd, subscription and update fibers would
+    // otherwise die unobserved; funnel them here so they surface on model$.
+    const errSignal = yield* Deferred.make<never, E>()
+    const surfaceCause = (cause: Cause.Cause<E>) =>
+      Cause.isInterruptedOnly(cause) ? Effect.void : Deferred.failCause(errSignal, cause)
+
     // Dispatch function - adds message to queue
     const dispatch: Dispatch<Msg> = (msg) => {
       Effect.runSync(Queue.offer(msgQueue, msg))
@@ -109,6 +115,7 @@ export const program = <Model, Msg, E = never, R = never>(
       pipe(
         cmd,
         Stream.runForEach(msg => Queue.offer(msgQueue, msg)),
+        Effect.catchAllCause(surfaceCause),
         Effect.forkScoped,
         Effect.asVoid
       )
@@ -145,12 +152,15 @@ export const program = <Model, Msg, E = never, R = never>(
     )
 
     // Start loops in background
-    const updateFiber = yield* Effect.forkScoped(updateLoop)
-    const subFiber = yield* Effect.forkScoped(subscriptionLoop)
+    const updateFiber = yield* Effect.forkScoped(Effect.catchAllCause(updateLoop, surfaceCause))
+    const subFiber = yield* Effect.forkScoped(Effect.catchAllCause(subscriptionLoop, surfaceCause))
 
-    // Model stream - from SubscriptionRef.changes
-    // Emits current value on subscription + all subsequent changes
-    const model$: Stream.Stream<Model, E, R> = modelRef.changes as Stream.Stream<Model, E, R>
+    // Model stream: SubscriptionRef.changes merged with the error signal, so a
+    // failing cmd/sub/update surfaces on model$ (honoring the declared E).
+    const model$: Stream.Stream<Model, E, R> = Stream.merge(
+      modelRef.changes,
+      Stream.fromEffect(Deferred.await(errSignal))
+    ) as Stream.Stream<Model, E, R>
 
     // Shutdown function
     const shutdown = Effect.gen(function* () {
