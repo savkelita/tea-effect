@@ -204,7 +204,12 @@ export const makeUseProgram = (React: ReactLike) => {
     const [model, setModel] = useState<Model>(() => initialModel)
     const programRef = useRef<Platform.Program<Model, Msg, E, R> | null>(null)
     const fiberRef = useRef<Fiber.RuntimeFiber<void, E> | null>(null)
-    const dispatchRef = useRef<Platform.Dispatch<Msg>>(() => {})
+    // Buffer messages dispatched before the program is installed (e.g. from a
+    // child's mount effect) instead of dropping them into a no-op.
+    const pendingRef = useRef<Msg[]>([])
+    const dispatchRef = useRef<Platform.Dispatch<Msg>>((msg) => {
+      pendingRef.current.push(msg)
+    })
 
     useEffect(() => {
       const runtime = options.runtime ?? Runtime.defaultRuntime as Runtime.Runtime<R>
@@ -215,6 +220,10 @@ export const makeUseProgram = (React: ReactLike) => {
 
           programRef.current = prog
           dispatchRef.current = prog.dispatch
+          // Flush anything dispatched before the program was ready, in order.
+          for (const msg of pendingRef.current.splice(0)) {
+            prog.dispatch(msg)
+          }
 
           // Subscribe to model updates from PubSub - push-based!
           yield* pipe(
@@ -229,6 +238,11 @@ export const makeUseProgram = (React: ReactLike) => {
       fiberRef.current = fiber
 
       return () => {
+        // Re-buffer post-unmount dispatches (e.g. StrictMode remount) rather
+        // than sending them into a shut-down program.
+        dispatchRef.current = (msg) => {
+          pendingRef.current.push(msg)
+        }
         if (programRef.current) {
           Runtime.runFork(runtime)(programRef.current.shutdown)
         }
