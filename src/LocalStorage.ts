@@ -393,7 +393,9 @@ export const onChange = <A, I, Msg>(
     readonly onError: (error: LocalStorageError) => Msg
   }
 ): Sub.Sub<Msg> =>
-  Stream.asyncPush<StorageEvent>((emit) =>
+  // Stable key so keyed diffing keeps the single storage listener alive across
+  // model changes (no re-register churn / no zero-listener gap).
+  Sub.withKey(`localStorage:onChange:${key}`, Stream.asyncPush<StorageEvent>((emit) =>
     Effect.acquireRelease(
       Effect.sync(() => {
         if (typeof window === 'undefined') {
@@ -434,7 +436,7 @@ export const onChange = <A, I, Msg>(
         Effect.catchAll((error) => Effect.succeed(handlers.onError(error)))
       )
     })
-  )
+  ))
 
 /**
  * Subscribes to raw string changes for a specific key from OTHER browser tabs/windows.
