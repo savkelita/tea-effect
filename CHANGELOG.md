@@ -95,6 +95,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `Cmd.batch` uses `Stream.mergeAll` for concurrent execution
   - Platform uses `Stream.runForEach` with `Effect.forkScoped` to process commands
 
+### Removed
+
+- **Cmd** module - Removed `batchAll` (breaking change). Use `Cmd.batch`, which
+  now dispatches all messages as commands complete; to collect multiple task
+  results into one message, compose with `Task.all` and `Task.perform`/`attempt`.
+
 ## [0.3.0] - 2025-01-16
 
 ### Changed
