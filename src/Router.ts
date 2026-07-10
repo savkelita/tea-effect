@@ -192,6 +192,12 @@ export const path = <
       querySchema: Schema.Schema<Q, I, never>
     ): RouteDefinition<string, ParamsFromSchemas<ExtractParams<P>, S>, Q> => {
       const queryKeys = getSchemaKeys(querySchema)
+      const overlap = (queryKeys ?? []).filter(k => paramKeys.includes(k))
+      if (overlap.length > 0) {
+        throw new Error(
+          `Router.path: query keys collide with path params: ${overlap.join(', ')}`
+        )
+      }
       const queryMatcher: Matcher.Matcher<Q> = {
         parser: Parser.query(querySchema),
         formatter: Formatter.query<Q>(queryKeys, paramKeys)
