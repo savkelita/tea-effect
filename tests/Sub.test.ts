@@ -106,26 +106,27 @@ describe('Sub', () => {
       const base = Sub.interval(100, 1)
       const mapped = Sub.map((n: number) => n + 1)(base)
       expect(Sub.getSubEntries(mapped)).toHaveLength(1)
-      expect(Sub.getSubEntries(mapped)[0].key).toContain(':map:')
+      expect(Sub.getSubEntries(mapped)[0].key.endsWith(':map')).toBe(true)
 
       const filtered = Sub.filter((n: number) => n > 0)(base)
-      expect(Sub.getSubEntries(filtered)[0].key).toContain(':filter:')
+      expect(Sub.getSubEntries(filtered)[0].key.endsWith(':filter')).toBe(true)
     })
 
-    it('#1(regression): map/filter with distinct functions get distinct keys', () => {
+    it('review2: map key is stable regardless of tagger identity (keep-alive for inline closures)', () => {
       const base = Sub.interval(100, 1)
-      const fa = (n: number) => n + 1
-      const fb = (n: number) => n + 2
-      expect(Sub.getSubEntries(Sub.map(fa)(base))[0].key).not.toBe(Sub.getSubEntries(Sub.map(fb)(base))[0].key)
-      // same function reference -> stable key (kept alive across model changes)
-      expect(Sub.getSubEntries(Sub.map(fa)(base))[0].key).toBe(Sub.getSubEntries(Sub.map(fa)(base))[0].key)
+      // Distinct inline taggers -> SAME key (so an inline closure recreated each
+      // render does not restart the wrapped source); both still deliver because
+      // Platform merges same-key streams (see Platform review2 test).
+      expect(Sub.getSubEntries(Sub.map((n: number) => n + 1)(base))[0].key)
+        .toBe(Sub.getSubEntries(Sub.map((n: number) => n + 2)(base))[0].key)
     })
 
-    it('#1(regression): stableStringify does not collapse NaN/Infinity/null or undefined fields', () => {
+    it('#1(regression): stableStringify does not collapse NaN/Infinity/null/undefined/bigint', () => {
       const k = (s: Sub.Sub<any>) => Sub.getSubEntries(s)[0].key
       expect(k(Sub.of(NaN))).not.toBe(k(Sub.of(Infinity)))
       expect(k(Sub.of(null as any))).not.toBe(k(Sub.of(NaN as any)))
       expect(k(Sub.of({ a: undefined }))).not.toBe(k(Sub.of({})))
+      expect(k(Sub.of(1n as any))).not.toBe(k(Sub.of(2n as any)))
     })
 
     it('#1: none has no entries', () => {
