@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { Effect, Option, Schema, Stream, Chunk, Exit } from 'effect'
+import { Effect, Option, Schema, Stream, Chunk, Exit, Scope } from 'effect'
 import * as LocalStorage from '../src/LocalStorage'
+import * as Platform from '../src/Platform'
+import * as Cmd from '../src/Cmd'
 
 // Mock localStorage
 const createMockStorage = () => {
@@ -366,18 +368,20 @@ describe('LocalStorage', () => {
     }
     const installWindow = () => {
       const listeners: Array<(e: any) => void> = []
+      const counts = { adds: 0, removes: 0 }
       const localStorage = mkStore()
       const sessionStorage = mkStore()
       ;(global as any).window = {
         localStorage,
         sessionStorage,
-        addEventListener: (_t: string, h: any) => { listeners.push(h) },
+        addEventListener: (_t: string, h: any) => { counts.adds++; listeners.push(h) },
         removeEventListener: (_t: string, h: any) => {
+          counts.removes++
           const i = listeners.indexOf(h)
           if (i >= 0) listeners.splice(i, 1)
         }
       }
-      return { listeners, localStorage, sessionStorage }
+      return { listeners, localStorage, sessionStorage, counts }
     }
     const Counter = Schema.Struct({ n: Schema.Number })
 
@@ -442,6 +446,32 @@ describe('LocalStorage', () => {
         )
       )
       expect(got).toBe('none')
+    })
+
+    it('review-B: onChange keeps its listener registered across model changes (no churn)', async () => {
+      const { counts } = installWindow()
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const scope = yield* Scope.make()
+            const prog = yield* Platform.program<{ n: number }, { type: 'Go' }>(
+              [{ n: 0 }, Cmd.none],
+              (_msg, m) => [{ n: m.n + 1 }, Cmd.none],
+              () => LocalStorage.onChange('c', Counter, { onSuccess: () => ({ type: 'Go' as const }), onError: () => ({ type: 'Go' as const }) })
+            ).pipe(Scope.extend(scope))
+            yield* Effect.forkScoped(Stream.runDrain(prog.model$))
+            yield* Effect.sleep('30 millis')
+            for (let i = 0; i < 4; i++) {
+              prog.dispatch({ type: 'Go' })
+              yield* Effect.sleep('20 millis')
+            }
+            yield* Scope.close(scope, Exit.void)
+          })
+        )
+      )
+      // Registered once for the program's whole life; removed once at teardown.
+      expect(counts.adds).toBe(1)
+      expect(counts.removes).toBe(1)
     })
   })
 })

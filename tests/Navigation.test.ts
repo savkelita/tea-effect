@@ -2,6 +2,8 @@ import { describe, it, expect, afterEach } from 'vitest'
 import { Effect, Stream, Scope, Exit } from 'effect'
 import * as Navigation from '../src/Navigation'
 import * as Cmd from '../src/Cmd'
+import * as Sub from '../src/Sub'
+import * as Platform from '../src/Platform'
 
 describe('Navigation', () => {
   describe('getLocation (SSR)', () => {
@@ -265,6 +267,42 @@ describe('Navigation', () => {
       )
 
       expect(changes).toEqual([]) // no phantom UrlChanged from the earlier stray navigation
+    })
+
+    it('review-G: two batched urlChanges with different messages both fire', async () => {
+      const popHandlers: Array<(e: any) => void> = []
+      ;(global as any).window = {
+        location: { pathname: '/p', search: '', hash: '', href: 'https://ex.com/p', origin: 'https://ex.com' },
+        history: { pushState: () => {}, replaceState: () => {} },
+        addEventListener: (t: string, h: any) => { if (t === 'popstate') popHandlers.push(h) },
+        removeEventListener: () => {}
+      }
+
+      const got: string[] = []
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const scope = yield* Scope.make()
+            const prog = yield* Platform.program<{ n: number }, { type: string }>(
+              [{ n: 0 }, Cmd.none],
+              (msg, m) => (got.push(msg.type), [{ n: m.n + 1 }, Cmd.none]),
+              () =>
+                Sub.batch([
+                  Navigation.urlChanges(() => ({ type: 'UA' })),
+                  Navigation.urlChanges(() => ({ type: 'UB' }))
+                ])
+            ).pipe(Scope.extend(scope))
+            yield* Effect.forkScoped(Stream.runDrain(prog.model$))
+            yield* Effect.sleep('40 millis')
+            popHandlers.forEach((h) => h({ type: 'popstate' }))
+            yield* Effect.sleep('40 millis')
+            yield* Scope.close(scope, Exit.void)
+          })
+        )
+      )
+
+      expect(got).toContain('UA')
+      expect(got).toContain('UB')
     })
   })
 })

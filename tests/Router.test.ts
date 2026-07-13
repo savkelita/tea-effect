@@ -477,5 +477,20 @@ describe('Router', () => {
         expect(Option.isNone(parseUrl(routes, bad))).toBe(true)
       }
     })
+
+    it('review-E: format stays total when a refined schema encode would throw', () => {
+      const routes = Router.routes({ user: Router.path('/users/:id', { id: Router.IntFromString }) })
+      expect(() => Router.format(routes.user, { id: 3.14 } as any)).not.toThrow()
+      expect(Router.format(routes.user, { id: 42 })).toBe('/users/42')
+    })
+
+    it('review-#11: format stays total when a required/default query field is omitted', () => {
+      const routes = Router.routes({
+        user: Router.path('/users/:id', { id: Schema.NumberFromString }).query(
+          Schema.Struct({ tab: Schema.String, page: Schema.optionalWith(Schema.NumberFromString, { default: () => 1 }) })
+        )
+      })
+      expect(() => Router.format(routes.user, { id: 7, tab: 'posts' } as any)).not.toThrow()
+    })
   })
 })

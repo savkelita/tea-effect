@@ -128,11 +128,14 @@ describe('React', () => {
         },
         useEffect: (fn: any) => { effects.push(fn) }
       }
+      let cleanups: Array<void | (() => void)> = []
       return {
         React,
         states,
+        refs,
         render(run: () => any) { si = 0; ri = 0; effects = []; return run() },
-        flush() { effects.forEach((e) => e()) }
+        flush() { cleanups = effects.map((e) => e()) },
+        unmount() { cleanups.forEach((c) => { if (typeof c === 'function') c() }) }
       }
     }
     const tick = (ms = 60) => new Promise((r) => setTimeout(r, ms))
@@ -185,6 +188,22 @@ describe('React', () => {
       expect(typeof h.states[0]).toBe('function')
       expect(h.states[0]).toBe(validator)
       expect(h.states[0]('hello')).toBe(true)
+    })
+
+    it('review-#10: the pre-mount buffer does not grow after a permanent unmount', async () => {
+      type Model = { n: number }
+      type Msg = { type: 'Load' }
+      const h = makeHarness()
+      const useProgram = TeaReact.makeUseProgram(h.React)
+      const r = h.render(() =>
+        useProgram<Model, Msg>([{ n: 0 }, Cmd.none], (_msg, m) => [{ n: m.n + 1 }, Cmd.none])
+      )
+      h.flush()
+      await tick()
+      h.unmount()
+      for (let i = 0; i < 3000; i++) r.dispatch({ type: 'Load' })
+      const pending = h.refs.map((x: any) => x?.current).find((c: any) => Array.isArray(c))
+      expect(pending).toEqual([]) // dropped, not accumulated
     })
   })
 })
