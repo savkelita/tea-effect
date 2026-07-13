@@ -372,6 +372,12 @@ export const keys = <Msg>(handlers: {
  * Note: The storage event only fires when the change is made by ANOTHER document
  * (i.e., another tab or window). Changes made in the current document do not trigger this event.
  *
+ * Keep-alive note: the subscription (keyed by `key`) is registered once and kept
+ * alive across model changes, so its `handlers` are captured from the first
+ * render. Have `onSuccess`/`onError` produce a plain message and read
+ * model-dependent data in `update` (which always sees the latest model) rather
+ * than closing over changing model/props here.
+ *
  * @since 0.3.0
  * @category Subscriptions
  * @example
