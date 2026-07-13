@@ -88,11 +88,13 @@ export const IntFromString: Schema.Schema<number, string> = Schema.NumberFromStr
  * @since 0.6.0
  * @category Type utilities
  */
-export type ExtractParams<T extends string> = T extends `${string}/:${infer Param}/${infer Rest}`
-  ? Param | ExtractParams<`/${Rest}`>
+type ExtractParamsRooted<T extends string> = T extends `${string}/:${infer Param}/${infer Rest}`
+  ? Param | ExtractParamsRooted<`/${Rest}`>
   : T extends `${string}/:${infer Param}`
     ? Param
     : never
+
+export type ExtractParams<T extends string> = ExtractParamsRooted<T extends `/${string}` ? T : `/${T}`>
 
 /**
  * Create an object type from parameter names and their schemas.
