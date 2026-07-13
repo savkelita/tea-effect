@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { Effect, Stream, Exit } from 'effect'
+import { Effect, Stream, Exit, Scope, Schedule } from 'effect'
 import * as Platform from '../src/Platform'
 import * as Cmd from '../src/Cmd'
 import * as Sub from '../src/Sub'
@@ -211,6 +211,34 @@ describe('Platform', () => {
       )
     }, 10000)
 
+    it('review2: a mapped timer with an INLINE tagger is not starved (keep-alive)', async () => {
+      type M = { ticks: number }
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const prog = yield* Platform.program<M, { type: string }>(
+              [{ ticks: 0 }, Cmd.none],
+              (msg, m) => (msg.type === 'Tick' ? [{ ticks: m.ticks + 1 }, Cmd.none] : [m, Cmd.none]),
+              // Fresh inline tagger on every subscriptions(model) call — must not
+              // restart the wrapped interval (that was the fnId-key regression).
+              () => Sub.map((_n: number) => ({ type: 'Tick' as const }))(Sub.interval(100, 0))
+            )
+            let latest: M = { ticks: 0 }
+            yield* Effect.forkScoped(
+              Stream.runForEach(prog.model$, (m) => Effect.sync(() => { latest = m }))
+            )
+            for (let i = 0; i < 15; i++) {
+              prog.dispatch({ type: 'Bump' })
+              yield* Effect.sleep('30 millis')
+            }
+            yield* Effect.sleep('40 millis')
+            yield* prog.shutdown
+            expect(latest.ticks).toBeGreaterThanOrEqual(3)
+          })
+        )
+      )
+    }, 10000)
+
     it('#3: a failing Cmd surfaces on model$', async () => {
       const outcome = await Effect.runPromise(
         Effect.scoped(
@@ -265,31 +293,38 @@ describe('Platform', () => {
       expect(Exit.isFailure(outcome)).toBe(true)
     }, 10000)
 
-    it('#13: dispatch after shutdown is a silent no-op (message dropped, not enqueued)', async () => {
+    it('#13: shutdown stops in-flight command fibers; dispatch after is a no-op', async () => {
       await Effect.runPromise(
         Effect.scoped(
           Effect.gen(function* () {
-            const seen: number[] = []
-            const prog = yield* Platform.program<{ n: number }, { type: 'Inc' }>(
-              [{ n: 0 }, Cmd.none],
+            // Own scope so we can shut the program down while the ambient scope
+            // (and thus, under the old code, the cmd fiber) is still open — the
+            // observable that distinguishes the fix from main.
+            const scope = yield* Scope.make()
+            let beats = 0
+            const infiniteCmd = Stream.repeatEffect(
+              Effect.sync(() => { beats++; return { type: 'Beat' as const } })
+            ).pipe(Stream.schedule(Schedule.spaced('20 millis')))
+            const prog = yield* Platform.program<{ n: number }, { type: 'Beat' } | { type: 'Inc' }>(
+              [{ n: 0 }, infiniteCmd],
               (_m, m) => [{ n: m.n + 1 }, Cmd.none]
-            )
-            yield* Effect.forkScoped(
-              Stream.runForEach(prog.model$, (m) => Effect.sync(() => { seen.push(m.n) }))
-            )
-            // one live dispatch works, advancing the model to 1
-            prog.dispatch({ type: 'Inc' })
-            yield* Effect.sleep('60 millis')
-            expect(seen).toContain(1)
+            ).pipe(Scope.extend(scope))
+            yield* Effect.forkScoped(Stream.runDrain(prog.model$))
 
+            yield* Effect.sleep('120 millis')
+            const atShutdown = beats
             yield* prog.shutdown
-            // post-shutdown dispatch must neither throw nor advance the model
+            yield* Effect.sleep('120 millis')
+            // The cmd fiber stopped at shutdown (main kept it running until the
+            // ambient scope closed, so beats would keep growing here).
+            expect(beats - atShutdown).toBeLessThanOrEqual(1)
+            // And a post-shutdown dispatch neither throws nor is processed.
             expect(() => prog.dispatch({ type: 'Inc' })).not.toThrow()
-            yield* Effect.sleep('60 millis')
-            expect(seen).not.toContain(2)
+
+            yield* Scope.close(scope, Exit.void)
           })
         )
       )
-    })
+    }, 10000)
   })
 })

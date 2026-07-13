@@ -153,7 +153,7 @@ export const program = <Model, Msg, E = never, R = never>(
     // keeping unchanged subs running and starting/stopping only the delta (Elm
     // semantics). This avoids restarting timers and re-registering DOM listeners
     // on every message, which switch-restart did.
-    const subFibers = new Map<string, Fiber.RuntimeFiber<void, never>>()
+    const subFibers = new Map<string, { fiber: Fiber.RuntimeFiber<void, never>; count: number }>()
     const diffSubs = (model: Model): Effect.Effect<void, never, R> =>
       Effect.gen(function* () {
         // Group by key so several subscriptions sharing a key (e.g. two batched
@@ -165,9 +165,12 @@ export const program = <Model, Msg, E = never, R = never>(
           if (list) list.push(entry.stream)
           else byKey.set(entry.key, [entry.stream])
         }
-        for (const [key, fiber] of subFibers) {
-          if (!byKey.has(key)) {
-            yield* Fiber.interrupt(fiber)
+        // Interrupt a key that disappeared, or whose member count changed (a
+        // same-key sub was added/removed) so the merged group is rebuilt.
+        for (const [key, running] of subFibers) {
+          const streams = byKey.get(key)
+          if (!streams || streams.length !== running.count) {
+            yield* Fiber.interrupt(running.fiber)
             subFibers.delete(key)
           }
         }
@@ -182,7 +185,7 @@ export const program = <Model, Msg, E = never, R = never>(
                 Effect.catchAllCause(surfaceCause)
               )
             )
-            subFibers.set(key, fiber)
+            subFibers.set(key, { fiber, count: streams.length })
           }
         }
       })
