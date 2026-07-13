@@ -210,10 +210,11 @@ export const makeUseProgram = (React: ReactLike) => {
     const programRef = useRef<Platform.Program<Model, Msg, E, R> | null>(null)
     const fiberRef = useRef<Fiber.RuntimeFiber<void, E> | null>(null)
     // Buffer messages dispatched before the program is installed (e.g. from a
-    // child's mount effect) instead of dropping them into a no-op.
+    // child's mount effect) instead of dropping them into a no-op. Bounded so a
+    // component that never mounts its effect cannot grow it without limit.
     const pendingRef = useRef<Msg[]>([])
     const dispatchRef = useRef<Platform.Dispatch<Msg>>((msg) => {
-      pendingRef.current.push(msg)
+      if (pendingRef.current.length < 1024) pendingRef.current.push(msg)
     })
 
     // Latest-ref for update/subscriptions so the once-started program always
@@ -258,11 +259,10 @@ export const makeUseProgram = (React: ReactLike) => {
 
       return () => {
         active = false
-        // Re-buffer post-unmount dispatches (e.g. StrictMode remount) rather
-        // than sending them into a shut-down program.
-        dispatchRef.current = (msg) => {
-          pendingRef.current.push(msg)
-        }
+        // Drop post-unmount dispatches (the program is shut down). We do NOT
+        // buffer here: a permanent unmount with a retained dispatch reference
+        // would otherwise accumulate messages without bound.
+        dispatchRef.current = () => {}
         if (programRef.current) {
           Runtime.runFork(runtime)(programRef.current.shutdown)
         }
