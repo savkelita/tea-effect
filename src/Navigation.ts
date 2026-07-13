@@ -172,17 +172,15 @@ export const getLocation = (): Location => {
   }
 }
 
-// Internal notifier so a programmatic pushUrl/replaceUrl reaches urlChanges even
-// when it fires before the subscription has registered (e.g. from init's Cmd),
-// which a bare synthetic popstate would miss.
-const urlChangeHandlers = new Set<() => void>()
-let pendingUrlChange = false
+// A programmatic pushUrl/replaceUrl notifies urlChanges by dispatching a
+// synthetic popstate. It is deferred to a macrotask so that a navigation issued
+// from init's Cmd is delivered even though the urlChanges listener registers
+// slightly after the initial Cmd runs. (No module-global state, so nothing
+// leaks between program instances.)
 const notifyUrlChange = (): void => {
-  if (urlChangeHandlers.size > 0) {
-    urlChangeHandlers.forEach((h) => h())
-  } else {
-    pendingUrlChange = true
-  }
+  setTimeout(() => {
+    window.dispatchEvent(new PopStateEvent('popstate'))
+  }, 0)
 }
 
 // -------------------------------------------------------------------------------------
@@ -376,17 +374,11 @@ export const urlChanges = <Msg>(toMsg: (location: Location) => Msg): Sub<Msg> =>
 
     const handler = () => emit(toMsg(getLocation()))
 
-    // popstate covers back/forward; the internal notifier covers programmatic
-    // pushUrl/replaceUrl (including one that fired before this registration).
-    urlChangeHandlers.add(handler)
+    // popstate covers browser back/forward AND the deferred synthetic popstate
+    // dispatched by pushUrl/replaceUrl.
     window.addEventListener('popstate', handler)
-    if (pendingUrlChange) {
-      pendingUrlChange = false
-      handler()
-    }
 
     return () => {
-      urlChangeHandlers.delete(handler)
       window.removeEventListener('popstate', handler)
     }
   }, 'navigation:urlChanges')

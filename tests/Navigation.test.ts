@@ -179,8 +179,10 @@ describe('Navigation', () => {
           replaceState: (_s: any, _t: any, url: string) => { path = new URL(url, 'https://ex.com').pathname }
         },
         addEventListener: (t: string, h: any) => { if (t === 'popstate') popHandlers.push(h) },
-        removeEventListener: () => {}
+        removeEventListener: () => {},
+        dispatchEvent: (e: any) => { if (e?.type === 'popstate') popHandlers.forEach((h) => h(e)) }
       }
+      ;(global as any).PopStateEvent = class { type = 'popstate' }
 
       type Model = { route: string }
       type Msg = { type: 'UrlChanged'; location: Navigation.Location }
@@ -213,6 +215,56 @@ describe('Navigation', () => {
 
       expect(path).toBe('/')
       expect(changes).toContain('/')
+    })
+
+    it('F: a stray navigation with no subscriber does not leak into a later program', async () => {
+      let path = '/home'
+      const popHandlers: Array<(e: any) => void> = []
+      ;(global as any).window = {
+        location: {
+          get pathname() { return path },
+          get search() { return '' },
+          get hash() { return '' },
+          get href() { return 'https://ex.com' + path },
+          get origin() { return 'https://ex.com' }
+        },
+        history: {
+          pushState: (_s: any, _t: any, url: string) => { path = new URL(url, 'https://ex.com').pathname },
+          replaceState: (_s: any, _t: any, url: string) => { path = new URL(url, 'https://ex.com').pathname }
+        },
+        addEventListener: (t: string, h: any) => { if (t === 'popstate') popHandlers.push(h) },
+        removeEventListener: (t: string, h: any) => {
+          if (t === 'popstate') { const i = popHandlers.indexOf(h); if (i >= 0) popHandlers.splice(i, 1) }
+        },
+        dispatchEvent: (e: any) => { if (e?.type === 'popstate') popHandlers.forEach((h) => h(e)) }
+      }
+      ;(global as any).PopStateEvent = class { type = 'popstate' }
+
+      // A navigation issued while nobody is subscribed.
+      await Effect.runPromise(Effect.scoped(Stream.runDrain(Navigation.pushUrl('/stray'))))
+      await new Promise((r) => setTimeout(r, 20)) // let the deferred popstate fire into nobody
+
+      // A later program that only listens for URL changes and never navigates.
+      const changes: string[] = []
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const scope = yield* Scope.make()
+            const prog = yield* Navigation.program<{ route: string }, { type: 'UrlChanged'; location: Navigation.Location }, null>({
+              init: (loc) => [{ route: loc.pathname }, Cmd.none],
+              update: (msg) => (changes.push(msg.location.pathname), [{ route: msg.location.pathname }, Cmd.none]),
+              view: () => () => null,
+              onUrlRequest: () => ({ type: 'UrlChanged', location: Navigation.getLocation() }),
+              onUrlChange: (location) => ({ type: 'UrlChanged', location })
+            }).pipe(Scope.extend(scope))
+            yield* Effect.forkScoped(Stream.runDrain(prog.model$))
+            yield* Effect.sleep('60 millis')
+            yield* Scope.close(scope, Exit.void)
+          })
+        )
+      )
+
+      expect(changes).toEqual([]) // no phantom UrlChanged from the earlier stray navigation
     })
   })
 })
