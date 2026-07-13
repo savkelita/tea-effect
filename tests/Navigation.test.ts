@@ -304,5 +304,52 @@ describe('Navigation', () => {
       expect(got).toContain('UA')
       expect(got).toContain('UB')
     })
+
+    it('review2-#4: two navigations in one macrotask each deliver their own URL', async () => {
+      let path = '/start'
+      const popHandlers: Array<(e: any) => void> = []
+      ;(global as any).window = {
+        location: {
+          get pathname() { return path }, get search() { return '' }, get hash() { return '' },
+          get href() { return 'https://ex.com' + path }, get origin() { return 'https://ex.com' }
+        },
+        history: {
+          pushState: (_s: any, _t: any, u: string) => { path = new URL(u, 'https://ex.com').pathname },
+          replaceState: (_s: any, _t: any, u: string) => { path = new URL(u, 'https://ex.com').pathname }
+        },
+        addEventListener: (t: string, h: any) => { if (t === 'popstate') popHandlers.push(h) },
+        removeEventListener: () => {},
+        dispatchEvent: (e: any) => { if (e?.type === 'popstate') popHandlers.forEach((h) => h(e)) }
+      }
+      ;(global as any).PopStateEvent = class { type = 'popstate' }
+
+      const changes: string[] = []
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const scope = yield* Scope.make()
+            const prog = yield* Platform.program<{ r: string }, { type: string; p?: string }>(
+              [{ r: path }, Cmd.none],
+              (msg, m) =>
+                msg.type === 'Go'
+                  ? [m, Cmd.batch([Navigation.pushUrl('/a'), Navigation.pushUrl('/b')])]
+                  : msg.type === 'U'
+                    ? (changes.push(msg.p!), [{ r: msg.p! }, Cmd.none])
+                    : [m, Cmd.none],
+              () => Navigation.urlChanges((l) => ({ type: 'U', p: l.pathname }))
+            ).pipe(Scope.extend(scope))
+            yield* Effect.forkScoped(Stream.runDrain(prog.model$))
+            yield* Effect.sleep('40 millis')
+            prog.dispatch({ type: 'Go' })
+            yield* Effect.sleep('80 millis')
+            yield* Scope.close(scope, Exit.void)
+          })
+        )
+      )
+
+      // Both navigations delivered, each with its own captured URL (no lost
+      // intermediate, no duplicated final).
+      expect(changes).toEqual(['/a', '/b'])
+    })
   })
 })

@@ -178,8 +178,17 @@ export const getLocation = (): Location => {
 // slightly after the initial Cmd runs. (No module-global state, so nothing
 // leaks between program instances.)
 const notifyUrlChange = (): void => {
+  // Snapshot the location now (right after this pushState), so a burst of
+  // navigations in one macrotask each delivers its own URL rather than every
+  // deferred event lazily re-reading the final location. Re-guard window since
+  // the realm could be torn down before the timer fires.
+  const location = getLocation()
   setTimeout(() => {
-    window.dispatchEvent(new PopStateEvent('popstate'))
+    if (typeof window !== 'undefined') {
+      const event = new PopStateEvent('popstate')
+      ;(event as unknown as { __teaLocation: Location }).__teaLocation = location
+      window.dispatchEvent(event)
+    }
   }, 0)
 }
 
@@ -372,10 +381,12 @@ export const urlChanges = <Msg>(toMsg: (location: Location) => Msg): Sub<Msg> =>
       return () => {}
     }
 
-    const handler = () => emit(toMsg(getLocation()))
-
-    // popstate covers browser back/forward AND the deferred synthetic popstate
-    // dispatched by pushUrl/replaceUrl.
+    // Browser back/forward carry no snapshot -> read the current location; our
+    // deferred synthetic popstate carries the URL captured at navigation time.
+    const handler = (event: PopStateEvent) => {
+      const snapshot = (event as unknown as { __teaLocation?: Location }).__teaLocation
+      emit(toMsg(snapshot ?? getLocation()))
+    }
     window.addEventListener('popstate', handler)
 
     return () => {
