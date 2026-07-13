@@ -199,10 +199,12 @@ describe('Platform', () => {
               prog.dispatch({ type: 'Bump' })
               yield* Effect.sleep('30 millis')
             }
-            yield* Effect.sleep('150 millis')
+            // Short trailing window (< the 100ms interval period) so switch-restart
+            // yields 0 ticks (hard fail), while keyed diffing keeps ticking through
+            // the 450ms bump phase. >=3 cleanly separates the two (bug=0, fixed~4).
+            yield* Effect.sleep('40 millis')
             yield* prog.shutdown
-            // switch-restart delivered 0 ticks here; keyed diffing keeps it alive.
-            expect(latest.ticks).toBeGreaterThan(0)
+            expect(latest.ticks).toBeGreaterThanOrEqual(3)
             expect(latest.bumps).toBe(15)
           })
         )
@@ -263,16 +265,28 @@ describe('Platform', () => {
       expect(Exit.isFailure(outcome)).toBe(true)
     }, 10000)
 
-    it('#13: dispatch after shutdown is a silent no-op', async () => {
+    it('#13: dispatch after shutdown is a silent no-op (message dropped, not enqueued)', async () => {
       await Effect.runPromise(
         Effect.scoped(
           Effect.gen(function* () {
+            const seen: number[] = []
             const prog = yield* Platform.program<{ n: number }, { type: 'Inc' }>(
               [{ n: 0 }, Cmd.none],
               (_m, m) => [{ n: m.n + 1 }, Cmd.none]
             )
+            yield* Effect.forkScoped(
+              Stream.runForEach(prog.model$, (m) => Effect.sync(() => { seen.push(m.n) }))
+            )
+            // one live dispatch works, advancing the model to 1
+            prog.dispatch({ type: 'Inc' })
+            yield* Effect.sleep('60 millis')
+            expect(seen).toContain(1)
+
             yield* prog.shutdown
+            // post-shutdown dispatch must neither throw nor advance the model
             expect(() => prog.dispatch({ type: 'Inc' })).not.toThrow()
+            yield* Effect.sleep('60 millis')
+            expect(seen).not.toContain(2)
           })
         )
       )
