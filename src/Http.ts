@@ -61,6 +61,7 @@ export type HttpError =
   | { readonly _tag: 'NetworkError'; readonly error: unknown }
   | { readonly _tag: 'BadStatus'; readonly status: number; readonly body: string }
   | { readonly _tag: 'BadBody'; readonly error: unknown }
+  | { readonly _tag: 'BadRequestBody'; readonly error: unknown }
 
 /**
  * HTTP method type
@@ -88,10 +89,9 @@ export interface Header {
  * @since 0.2.0
  * @category Model
  */
-export interface Expect<A> {
-  readonly _tag: 'ExpectJson'
-  readonly decoder: Schema.Schema<A>
-}
+export type Expect<A> =
+  | { readonly _tag: 'ExpectJson'; readonly decoder: Schema.Schema<A> }
+  | { readonly _tag: 'ExpectString'; readonly decoder: Schema.Schema<A> }
 
 /**
  * Request body with optional Schema encoder for runtime validation.
@@ -164,6 +164,15 @@ export const badStatus = (status: number, body: string): HttpError => ({ _tag: '
  */
 export const badBody = (error: unknown): HttpError => ({ _tag: 'BadBody', error })
 
+/**
+ * Creates a BadRequestBody error (request payload failed to encode; no request
+ * was sent). Distinct from BadBody, which is a response-decoding failure.
+ *
+ * @since 0.2.0
+ * @category Errors
+ */
+export const badRequestBody = (error: unknown): HttpError => ({ _tag: 'BadRequestBody', error })
+
 // -------------------------------------------------------------------------------------
 // expectations
 // -------------------------------------------------------------------------------------
@@ -191,7 +200,10 @@ export const expectJson = <A>(decoder: Schema.Schema<A>): Expect<A> => ({
  * @since 0.2.0
  * @category Expectations
  */
-export const expectString: Expect<string> = expectJson(Schema.String)
+export const expectString: Expect<string> = {
+  _tag: 'ExpectString',
+  decoder: Schema.String
+}
 
 /**
  * Expect any JSON value (no validation).
@@ -475,6 +487,9 @@ export const bearerToken = (token: string): Header => authorization(`Bearer ${to
 
 const mapHttpClientError = (error: HttpClientError.HttpClientError): HttpError => {
   if (error._tag === 'RequestError') {
+    if (error.reason === 'InvalidUrl') {
+      return badUrl(error.request.url)
+    }
     return networkError(error.cause)
   }
   if (error._tag === 'ResponseError') {
@@ -534,25 +549,30 @@ export const toTaskRaw = <A>(req: Request<A>): Task<A, HttpError, HttpClient.Htt
 
     // Add body for methods that support it
     if (req.body._tag === 'JsonBody' && req.method !== 'GET' && req.method !== 'HEAD') {
-      // Encode body if encoder is provided
+      // Encode body if encoder is provided. Encoding/serialization failures are
+      // request-side (no request is sent), so map them to BadRequestBody rather
+      // than the response-side BadBody.
       const bodyValue = req.body.encoder
-        ? yield* Schema.encode(req.body.encoder)(req.body.value)
+        ? yield* Schema.encode(req.body.encoder)(req.body.value).pipe(Effect.mapError(badRequestBody))
         : req.body.value
-      httpReq = yield* HttpClientRequest.bodyJson(httpReq, bodyValue)
+      httpReq = yield* HttpClientRequest.bodyJson(httpReq, bodyValue).pipe(Effect.mapError(badRequestBody))
     }
 
     // Execute request
     const response = yield* client.execute(httpReq)
 
-    // Check status
-    if (response.status >= 400) {
+    // Check status: anything outside 2xx is a BadStatus (matches Elm), so a
+    // surfaced 304/3xx/1xx doesn't fall through to the decode path.
+    if (response.status < 200 || response.status >= 300) {
       const body = yield* response.text
       return yield* Effect.fail(badStatus(response.status, body))
     }
 
-    // Decode response
-    const json = yield* response.json
-    const decoded = yield* Schema.decodeUnknown(req.expect.decoder)(json)
+    // Read the body as raw text for ExpectString, JSON otherwise, then decode.
+    const raw = req.expect._tag === 'ExpectString'
+      ? yield* response.text
+      : yield* response.json
+    const decoded = yield* Schema.decodeUnknown(req.expect.decoder)(raw)
 
     return decoded
   })
@@ -567,12 +587,12 @@ export const toTaskRaw = <A>(req: Request<A>): Task<A, HttpError, HttpClient.Htt
       )
     : execute
 
-  return withTimeout.pipe(
+  const handled = withTimeout.pipe(
     Effect.catchAll((error) => {
       // Handle our own HttpError
       if (typeof error === 'object' && error !== null && '_tag' in error) {
         const err = error as { _tag: string }
-        if (err._tag === 'BadStatus' || err._tag === 'BadBody' ||
+        if (err._tag === 'BadStatus' || err._tag === 'BadBody' || err._tag === 'BadRequestBody' ||
             err._tag === 'BadUrl' || err._tag === 'Timeout' || err._tag === 'NetworkError') {
           return Effect.fail(error as HttpError)
         }
@@ -585,6 +605,12 @@ export const toTaskRaw = <A>(req: Request<A>): Task<A, HttpError, HttpClient.Htt
     }),
     Effect.scoped
   )
+
+  // Apply credentials via the fetch client's RequestInit context tag (the flag
+  // is otherwise inert). Mock clients simply ignore the unused service.
+  return req.withCredentials
+    ? handled.pipe(Effect.provideService(FetchHttpClient.RequestInit, { credentials: 'include' }))
+    : handled
 }
 
 /**

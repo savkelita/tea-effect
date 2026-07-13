@@ -82,4 +82,55 @@ describe('Sub', () => {
       expect(Array.from(messages)).toEqual(['hello', 'world'])
     })
   })
+
+  // Regression tests for audited bugs (see AUDIT.md).
+  describe('AUDIT regressions', () => {
+    const keys = <M>(sub: Sub.Sub<M>) => Sub.getSubEntries(sub).map((e) => e.key)
+
+    it('#1: interval has a stable key derived from its args', () => {
+      expect(keys(Sub.interval(300, { type: 'Tick' }))).toEqual(keys(Sub.interval(300, { type: 'Tick' })))
+      expect(keys(Sub.interval(300, { type: 'Tick' }))[0]).not.toBe(keys(Sub.interval(500, { type: 'Tick' }))[0])
+    })
+
+    it('#1: of has a stable key derived from the message', () => {
+      expect(keys(Sub.of('a'))).toEqual(keys(Sub.of('a')))
+      expect(keys(Sub.of('a'))[0]).not.toBe(keys(Sub.of('b'))[0])
+    })
+
+    it('#1: batch flattens child entries', () => {
+      const sub = Sub.batch([Sub.interval(100, { type: 'A' }), Sub.interval(200, { type: 'B' })])
+      expect(Sub.getSubEntries(sub)).toHaveLength(2)
+    })
+
+    it('#1: map/filter keep one entry per source and suffix the key', () => {
+      const base = Sub.interval(100, 1)
+      const mapped = Sub.map((n: number) => n + 1)(base)
+      expect(Sub.getSubEntries(mapped)).toHaveLength(1)
+      expect(Sub.getSubEntries(mapped)[0].key.endsWith(':map')).toBe(true)
+
+      const filtered = Sub.filter((n: number) => n > 0)(base)
+      expect(Sub.getSubEntries(filtered)[0].key.endsWith(':filter')).toBe(true)
+    })
+
+    it('review2: map key is stable regardless of tagger identity (keep-alive for inline closures)', () => {
+      const base = Sub.interval(100, 1)
+      // Distinct inline taggers -> SAME key (so an inline closure recreated each
+      // render does not restart the wrapped source); both still deliver because
+      // Platform merges same-key streams (see Platform review2 test).
+      expect(Sub.getSubEntries(Sub.map((n: number) => n + 1)(base))[0].key)
+        .toBe(Sub.getSubEntries(Sub.map((n: number) => n + 2)(base))[0].key)
+    })
+
+    it('#1(regression): stableStringify does not collapse NaN/Infinity/null/undefined/bigint', () => {
+      const k = (s: Sub.Sub<any>) => Sub.getSubEntries(s)[0].key
+      expect(k(Sub.of(NaN))).not.toBe(k(Sub.of(Infinity)))
+      expect(k(Sub.of(null as any))).not.toBe(k(Sub.of(NaN as any)))
+      expect(k(Sub.of({ a: undefined }))).not.toBe(k(Sub.of({})))
+      expect(k(Sub.of(1n as any))).not.toBe(k(Sub.of(2n as any)))
+    })
+
+    it('#1: none has no entries', () => {
+      expect(Sub.getSubEntries(Sub.none)).toHaveLength(0)
+    })
+  })
 })

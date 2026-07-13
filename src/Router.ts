@@ -22,7 +22,7 @@
  * const routes = Router.routes({
  *   home: Router.path('/'),
  *   users: Router.path('/users'),
- *   user: Router.path('/users/:id', { id: Schema.NumberFromString }),
+ *   user: Router.path('/users/:id', { id: Router.IntFromString }),
  *   search: Router.path('/search').query(
  *     Schema.Struct({
  *       q: Schema.String,
@@ -63,6 +63,15 @@ export * as Parser from './Router/Parser'
 export * as Formatter from './Router/Formatter'
 export * as Matcher from './Router/Matcher'
 
+/**
+ * A path-param schema for integer ids that rejects 'NaN', 'Infinity' and
+ * non-integers, unlike bare `Schema.NumberFromString`.
+ *
+ * @since 0.6.0
+ * @category Schemas
+ */
+export const IntFromString: Schema.Schema<number, string> = Schema.NumberFromString.pipe(Schema.int())
+
 // -------------------------------------------------------------------------------------
 // Path Pattern Types
 // -------------------------------------------------------------------------------------
@@ -79,11 +88,13 @@ export * as Matcher from './Router/Matcher'
  * @since 0.6.0
  * @category Type utilities
  */
-export type ExtractParams<T extends string> = T extends `${string}:${infer Param}/${infer Rest}`
-  ? Param | ExtractParams<`/${Rest}`>
-  : T extends `${string}:${infer Param}`
+type ExtractParamsRooted<T extends string> = T extends `${string}/:${infer Param}/${infer Rest}`
+  ? Param | ExtractParamsRooted<`/${Rest}`>
+  : T extends `${string}/:${infer Param}`
     ? Param
     : never
+
+export type ExtractParams<T extends string> = ExtractParamsRooted<T extends `/${string}` ? T : `/${T}`>
 
 /**
  * Create an object type from parameter names and their schemas.
@@ -192,14 +203,29 @@ export const path = <
       querySchema: Schema.Schema<Q, I, never>
     ): RouteDefinition<string, ParamsFromSchemas<ExtractParams<P>, S>, Q> => {
       const queryKeys = getSchemaKeys(querySchema)
+      const overlap = (queryKeys ?? []).filter(k => paramKeys.includes(k))
+      if (overlap.length > 0) {
+        throw new Error(
+          `Router.path: query keys collide with path params: ${overlap.join(', ')}`
+        )
+      }
+      const encodeQuery = Schema.encodeSync(querySchema)
       const queryMatcher: Matcher.Matcher<Q> = {
         parser: Parser.query(querySchema),
-        formatter: Formatter.query<Q>(queryKeys)
+        formatter: Formatter.query<Q>(queryKeys, paramKeys, (q) => {
+          // Fall back to the raw subset if encoding fails (e.g. an omitted field
+          // in an as-any call) so format stays total, as it was before.
+          try {
+            return encodeQuery(q as Q) as Record<string, unknown>
+          } catch {
+            return q
+          }
+        })
       }
       return {
         _tag: '',
         matcher: Matcher.seq(matcher, queryMatcher) as any,
-        hasParams: pattern.includes(':'),
+        hasParams: paramKeys.length > 0,
         hasQuery: true,
         paramKeys,
         queryKeys: queryKeys || []
@@ -209,7 +235,7 @@ export const path = <
     end: (): RouteDefinition<string, ParamsFromSchemas<ExtractParams<P>, S>, void> => ({
       _tag: '',
       matcher: Matcher.seq(matcher, Matcher.end) as any,
-      hasParams: pattern.includes(':'),
+      hasParams: paramKeys.length > 0,
       hasQuery: false,
       paramKeys,
       queryKeys: []
@@ -248,6 +274,11 @@ function getSchemaKeys(schema: Schema.Schema<any, any, never>): string[] | undef
     'propertySignatures' in ast &&
     Array.isArray((ast as { propertySignatures: unknown }).propertySignatures)
   ) {
+    // Index-signature schemas (Schema.Record) can't be enumerated statically.
+    const indexSignatures = (ast as { indexSignatures?: unknown }).indexSignatures
+    if (Array.isArray(indexSignatures) && indexSignatures.length > 0) {
+      return undefined
+    }
     const propertySignatures = (ast as {
       propertySignatures: Array<{ name: PropertyKey }>
     }).propertySignatures
@@ -279,7 +310,19 @@ function buildMatcherFromPattern<S extends Record<string, Schema.Schema<any, str
       const schema = schemas[paramName]
 
       if (schema) {
-        matcher = Matcher.seq(matcher, Matcher.param(paramName, schema))
+        // Encode via the schema (not String()) so format round-trips transforms,
+        // but fall back to String() if encode throws (e.g. a refined schema like
+        // IntFromString given a type-valid but out-of-range value) so format
+        // stays total instead of crashing.
+        const enc = Schema.encodeSync(schema)
+        const safeEncode = (a: unknown): string => {
+          try {
+            return enc(a as any)
+          } catch {
+            return String(a)
+          }
+        }
+        matcher = Matcher.seq(matcher, Matcher.param(paramName, schema, safeEncode))
       } else {
         matcher = Matcher.seq(matcher, Matcher.str(paramName))
       }

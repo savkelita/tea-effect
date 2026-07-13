@@ -197,28 +197,58 @@ export const makeUseProgram = (React: ReactLike) => {
     init: readonly [Model, Cmd<Msg, E, R>],
     update: (msg: Msg, model: Model) => readonly [Model, Cmd<Msg, E, R>],
     subscriptions: (model: Model) => Sub<Msg, E, R> = () => subNone,
-    options: UseProgramOptions<R> = {}
+    // runtime is required exactly when Cmds/Subs need services (R is not never),
+    // so the defaultRuntime fallback below is only reachable (and sound) for R = never.
+    ...rest: [R] extends [never]
+      ? [options?: UseProgramOptions<never>]
+      : [options: { readonly runtime: Runtime.Runtime<R> }]
   ): UseProgramResult<Model, Msg> => {
+    const options = (rest[0] ?? {}) as UseProgramOptions<R>
     const [initialModel] = init
-    const [model, setModel] = useState<Model>(initialModel)
+    // Thunk-wrap so a function-typed Model is stored, not called as a lazy init.
+    const [model, setModel] = useState<Model>(() => initialModel)
     const programRef = useRef<Platform.Program<Model, Msg, E, R> | null>(null)
     const fiberRef = useRef<Fiber.RuntimeFiber<void, E> | null>(null)
-    const dispatchRef = useRef<Platform.Dispatch<Msg>>(() => {})
+    // Buffer messages dispatched before the program is installed (e.g. from a
+    // child's mount effect) instead of dropping them into a no-op. Bounded so a
+    // component that never mounts its effect cannot grow it without limit.
+    const pendingRef = useRef<Msg[]>([])
+    const dispatchRef = useRef<Platform.Dispatch<Msg>>((msg) => {
+      if (pendingRef.current.length < 1024) pendingRef.current.push(msg)
+    })
+
+    // Latest-ref for update/subscriptions so the once-started program always
+    // calls the current closures (matching React useReducer), not first-render ones.
+    const updateRef = useRef(update)
+    updateRef.current = update
+    const subscriptionsRef = useRef(subscriptions)
+    subscriptionsRef.current = subscriptions
 
     useEffect(() => {
+      // Guards against a torn-down program's fibers writing React state after
+      // cleanup (StrictMode remount shares this component's setModel).
+      let active = true
       const runtime = options.runtime ?? Runtime.defaultRuntime as Runtime.Runtime<R>
 
       const setup = Effect.scoped(
         Effect.gen(function* () {
-          const prog = yield* Platform.program(init, update, subscriptions)
+          const prog = yield* Platform.program(
+            init,
+            (msg, m) => updateRef.current(msg, m),
+            (m) => subscriptionsRef.current(m)
+          )
 
           programRef.current = prog
           dispatchRef.current = prog.dispatch
+          // Flush anything dispatched before the program was ready, in order.
+          for (const msg of pendingRef.current.splice(0)) {
+            prog.dispatch(msg)
+          }
 
           // Subscribe to model updates from PubSub - push-based!
           yield* pipe(
             prog.model$,
-            Stream.tap(newModel => Effect.sync(() => setModel(newModel))),
+            Stream.tap(newModel => Effect.sync(() => { if (active) setModel(() => newModel) })),
             Stream.runDrain
           )
         })
@@ -228,6 +258,11 @@ export const makeUseProgram = (React: ReactLike) => {
       fiberRef.current = fiber
 
       return () => {
+        active = false
+        // Drop post-unmount dispatches (the program is shut down). We do NOT
+        // buffer here: a permanent unmount with a retained dispatch reference
+        // would otherwise accumulate messages without bound.
+        dispatchRef.current = () => {}
         if (programRef.current) {
           Runtime.runFork(runtime)(programRef.current.shutdown)
         }

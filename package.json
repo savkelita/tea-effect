@@ -1,6 +1,6 @@
 {
   "name": "tea-effect",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "The Elm Architecture for TypeScript with Effect",
   "keywords": [
     "elm",
@@ -89,7 +89,6 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src",
     "test": "vitest",
     "example:counter": "npx tsx examples/test-counter.ts",
     "example:userlist": "npx tsx examples/test-runtime.ts",
@@ -98,8 +97,16 @@
   },
   "peerDependencies": {
     "@effect/platform": "^0.94.0",
-    "effect": "^3.12.0",
+    "effect": "^3.19.15",
     "react": "^18.0.0 || ^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@effect/platform": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@effect/platform": "^0.94.0",

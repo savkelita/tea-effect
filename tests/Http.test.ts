@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { Schema, pipe } from 'effect'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { Schema, pipe, Effect, Either } from 'effect'
 import * as Http from '../src/Http'
 
 describe('Http', () => {
@@ -42,7 +42,7 @@ describe('Http', () => {
     })
 
     it('should have expectString', () => {
-      expect(Http.expectString._tag).toBe('ExpectJson')
+      expect(Http.expectString._tag).toBe('ExpectString')
     })
 
     it('should have expectWhatever', () => {
@@ -231,6 +231,79 @@ describe('Http', () => {
       expect(authedRequest.method).toBe('GET')
       expect(authedRequest.url).toBe('/api/users')
       expect(authedRequest.headers).toHaveLength(1)
+    })
+  })
+
+  // Regression tests for audited bugs (see AUDIT.md). Stubs global fetch so the
+  // real FetchHttpClient path (toTask) is exercised end-to-end.
+  describe('AUDIT regressions', () => {
+    const origFetch = globalThis.fetch
+    let lastInit: RequestInit | undefined
+    let fetchCalls = 0
+
+    beforeEach(() => {
+      lastInit = undefined
+      fetchCalls = 0
+      globalThis.fetch = (async (input: any, init: any) => {
+        fetchCalls++
+        lastInit = init
+        const url = String(input?.url ?? input)
+        if (url.includes('/text')) return new Response('OK', { status: 200, headers: { 'content-type': 'text/plain' } })
+        if (url.includes('/notmod')) return new Response(null, { status: 304 })
+        return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'content-type': 'application/json' } })
+      }) as typeof fetch
+    })
+    afterEach(() => { globalThis.fetch = origFetch })
+
+    const runEither = <A>(task: Http.Task<A, Http.HttpError, never>) =>
+      Effect.runPromise(Effect.either(task))
+
+    it('#6: expectString decodes a plain-text body', async () => {
+      const result = await runEither(Http.toTask(Http.get('http://x/text', Http.expectString)))
+      expect(Either.isRight(result)).toBe(true)
+      if (Either.isRight(result)) expect(result.right).toBe('OK')
+    })
+
+    it('#16: a 304 response is BadStatus, not BadBody', async () => {
+      const result = await runEither(
+        Http.toTask(Http.get('http://x/notmod', Http.expectJson(Schema.Struct({ ok: Schema.Boolean }))))
+      )
+      expect(Either.isLeft(result)).toBe(true)
+      if (Either.isLeft(result)) {
+        expect(result.left._tag).toBe('BadStatus')
+        if (result.left._tag === 'BadStatus') expect(result.left.status).toBe(304)
+      }
+    })
+
+    it('#17: a malformed URL maps to BadUrl', async () => {
+      const result = await runEither(Http.toTask(Http.get('http://exa mple.com/api', Http.expectWhatever)))
+      expect(Either.isLeft(result)).toBe(true)
+      if (Either.isLeft(result)) expect(result.left._tag).toBe('BadUrl')
+    })
+
+    it('#29: a request-body encode failure is BadRequestBody and sends no request', async () => {
+      const result = await runEither(
+        Http.toTask(
+          Http.post(
+            'http://x/api',
+            Http.jsonBody(Schema.Struct({ age: Schema.Number }), { age: 'nope' } as any),
+            Http.expectWhatever
+          )
+        )
+      )
+      expect(Either.isLeft(result)).toBe(true)
+      if (Either.isLeft(result)) expect(result.left._tag).toBe('BadRequestBody')
+      expect(fetchCalls).toBe(0)
+    })
+
+    it('#5: withCredentials sends credentials: include', async () => {
+      await runEither(pipe(Http.get('http://x/api', Http.expectWhatever), Http.withCredentials, Http.toTask))
+      expect(lastInit?.credentials).toBe('include')
+    })
+
+    it('#5: without withCredentials, credentials is not set', async () => {
+      await runEither(Http.toTask(Http.get('http://x/api', Http.expectWhatever)))
+      expect(lastInit?.credentials).toBeUndefined()
     })
   })
 })

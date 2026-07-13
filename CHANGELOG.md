@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-07-13
+
+### Breaking
+- Http: added `BadRequestBody` to `HttpError` (exhaustive `switch`es must add a case)
+- Http: `expectString` now reads the body as text; `Expect` is a discriminated union
+- Http: non-2xx statuses are `BadStatus`; `withCredentials` is now applied
+- Platform: keyed subscription diffing; `model$` now fails with `E` on Cmd/Sub/update errors; `shutdown` stops command fibers
+- React: `makeUseProgram` requires `options.runtime` when `R` is not `never`
+- Router: params only at segment start; format/parse now percent- and schema-encode
+
+### Added
+- Router `IntFromString`; Sub `withKey`/`getSubEntries`/`SubEntry`; Http `badRequestBody`
+
+### Fixed
+- ~40 audited defects across Platform, Sub, React, Http, Navigation, LocalStorage, Router
+
 ## [0.6.0] - 2025-02-04
 
 ### Added
@@ -95,6 +111,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `Cmd.batch` uses `Stream.mergeAll` for concurrent execution
   - Platform uses `Stream.runForEach` with `Effect.forkScoped` to process commands
 
+### Removed
+
+- **Cmd** module - Removed `batchAll` (breaking change). Use `Cmd.batch`, which
+  now dispatches all messages as commands complete; to collect multiple task
+  results into one message, compose with `Task.all` and `Task.perform`/`attempt`.
+
 ## [0.3.0] - 2025-01-16
 
 ### Changed
@@ -183,6 +205,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Use `dispatchRef` pattern instead of `useMemo` for dispatch stability
   - Simplify setup effect using `Effect.scoped` wrapper
 
+[0.7.0]: https://github.com/savkelita/tea-effect/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/savkelita/tea-effect/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/savkelita/tea-effect/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/savkelita/tea-effect/compare/v0.4.0...v0.5.0

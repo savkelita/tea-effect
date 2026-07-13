@@ -224,6 +224,8 @@ export const renderError = (error: Http.HttpError): string => {
       return `Server error: ${error.status}`
     case 'BadBody':
       return 'Failed to parse response'
+    case 'BadRequestBody':
+      return 'Failed to encode request body'
   }
 }
 
