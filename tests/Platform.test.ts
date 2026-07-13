@@ -212,18 +212,24 @@ describe('Platform', () => {
     }, 10000)
 
     it('review2: a mapped timer with an INLINE tagger is not starved (keep-alive)', async () => {
-      type M = { ticks: number }
+      type M = { ticks: number; bumps: number }
       await Effect.runPromise(
         Effect.scoped(
           Effect.gen(function* () {
             const prog = yield* Platform.program<M, { type: string }>(
-              [{ ticks: 0 }, Cmd.none],
-              (msg, m) => (msg.type === 'Tick' ? [{ ticks: m.ticks + 1 }, Cmd.none] : [m, Cmd.none]),
+              // Bump returns a NEW model object each time, so it triggers a
+              // subscription re-diff — the condition under which an unstable map
+              // key would restart (starve) the wrapped interval.
+              [{ ticks: 0, bumps: 0 }, Cmd.none],
+              (msg, m) =>
+                msg.type === 'Tick'
+                  ? [{ ...m, ticks: m.ticks + 1 }, Cmd.none]
+                  : [{ ...m, bumps: m.bumps + 1 }, Cmd.none],
               // Fresh inline tagger on every subscriptions(model) call — must not
               // restart the wrapped interval (that was the fnId-key regression).
               () => Sub.map((_n: number) => ({ type: 'Tick' as const }))(Sub.interval(100, 0))
             )
-            let latest: M = { ticks: 0 }
+            let latest: M = { ticks: 0, bumps: 0 }
             yield* Effect.forkScoped(
               Stream.runForEach(prog.model$, (m) => Effect.sync(() => { latest = m }))
             )
@@ -233,6 +239,7 @@ describe('Platform', () => {
             }
             yield* Effect.sleep('40 millis')
             yield* prog.shutdown
+            expect(latest.bumps).toBe(15)
             expect(latest.ticks).toBeGreaterThanOrEqual(3)
           })
         )
