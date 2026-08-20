@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.1] - 2026-08-20
+
+### Fixed
+- Html: `map` caches the mapped dispatch per `(f, dispatch)` pair instead of allocating a new one on every render. A view is rebuilt each render, so the child used to receive a different dispatch every time and nothing below a `map` boundary could be memoised - `React.memo` never bailed out. Keep `f` a stable reference (a module-level message constructor); an inline arrow is a new cache key each render
+- Html: `map`'s doc said it maps the Dom type; it maps the messages
+
 ## [0.8.0] - 2026-08-20
 
 ### Breaking
