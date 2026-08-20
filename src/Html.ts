@@ -109,14 +109,43 @@ export const programWithFlags = <Flags, Model, Msg, Dom, E = never, R = never>(
 // -------------------------------------------------------------------------------------
 
 /**
- * Maps the Dom type of an Html.
+ * Mapped dispatch functions, keyed by the pair that defines them: `(f, dispatch)`.
+ *
+ * A view is rebuilt on every render, so `map` runs again each time. Allocating a fresh
+ * dispatch there would hand the child a different function on every render, and no
+ * memoised child could ever bail out - its props would never compare equal. Both keys are
+ * held weakly, so an entry lives exactly as long as the functions it belongs to.
+ */
+const dispatchCache = new WeakMap<object, WeakMap<object, unknown>>()
+
+/**
+ * Maps the messages carried by an Html into another message type.
+ *
+ * The mapped dispatch is cached per `(f, dispatch)` pair, so a parent wiring a child's view
+ * through `map` hands that child the SAME dispatch on every render. Without it, memoising
+ * anything below the boundary is pointless.
+ *
+ * Keep `f` a stable reference - a module-level message constructor. An inline arrow is a new
+ * key on every render and silently defeats the cache.
  *
  * @since 0.1.0
  * @category Combinators
  */
 export const map = <A, Msg>(f: (a: A) => Msg) =>
   <Dom>(html: Html<Dom, A>): Html<Dom, Msg> =>
-    (dispatch) => html((a) => dispatch(f(a)))
+    (dispatch) => {
+      let byDispatch = dispatchCache.get(f)
+      if (byDispatch === undefined) {
+        byDispatch = new WeakMap()
+        dispatchCache.set(f, byDispatch)
+      }
+      let mapped = byDispatch.get(dispatch) as Platform.Dispatch<A> | undefined
+      if (mapped === undefined) {
+        mapped = (a) => dispatch(f(a))
+        byDispatch.set(dispatch, mapped)
+      }
+      return html(mapped)
+    }
 
 // -------------------------------------------------------------------------------------
 // running
