@@ -25,7 +25,8 @@ describe('Navigation', () => {
         search: '?id=1',
         hash: '#top',
         href: 'https://example.com/users?id=1#top',
-        origin: 'https://example.com'
+        origin: 'https://example.com',
+        state: null
       }
       expect(location.pathname).toBe('/users')
       expect(location.search).toBe('?id=1')
@@ -44,7 +45,8 @@ describe('Navigation', () => {
           search: '',
           hash: '',
           href: 'https://example.com/about',
-          origin: 'https://example.com'
+          origin: 'https://example.com',
+          state: null
         }
       }
       expect(request._tag).toBe('Internal')
@@ -350,6 +352,122 @@ describe('Navigation', () => {
       // Both navigations delivered, each with its own captured URL (no lost
       // intermediate, no duplicated final).
       expect(changes).toEqual(['/a', '/b'])
+    })
+  })
+
+  describe('history state', () => {
+    afterEach(() => {
+      // @ts-expect-error - cleaning up mock
+      delete global.window
+    })
+
+    const mockWindow = () => {
+      const entry: { url: string; state: unknown } = { url: '/', state: null }
+      const popHandlers: Array<(e: any) => void> = []
+      ;(global as any).window = {
+        location: {
+          get pathname() {
+            return new URL(entry.url, 'https://ex.com').pathname
+          },
+          get search() {
+            return new URL(entry.url, 'https://ex.com').search
+          },
+          get hash() {
+            return ''
+          },
+          get href() {
+            return new URL(entry.url, 'https://ex.com').href
+          },
+          get origin() {
+            return 'https://ex.com'
+          }
+        },
+        history: {
+          get state() {
+            return entry.state
+          },
+          pushState: (s: unknown, _t: unknown, url: string) => {
+            entry.url = url
+            entry.state = s
+          },
+          replaceState: (s: unknown, _t: unknown, url: string) => {
+            entry.url = url
+            entry.state = s
+          }
+        },
+        addEventListener: (t: string, h: any) => {
+          if (t === 'popstate') popHandlers.push(h)
+        },
+        removeEventListener: () => {},
+        dispatchEvent: (e: any) => {
+          if (e?.type === 'popstate') popHandlers.forEach((h) => h(e))
+        }
+      }
+      ;(global as any).PopStateEvent = class {
+        type = 'popstate'
+      }
+      return { entry, popHandlers }
+    }
+
+    // The deferred synthetic popstate must fire before the next test subscribes,
+    // otherwise it lands on that test's listener.
+    const run = async <A>(cmd: Stream.Stream<A, never, Scope.Scope>) => {
+      await Effect.runPromise(Effect.scoped(Stream.runDrain(cmd)))
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    }
+
+    it('pushUrl stores what it was given and getLocation reads it back', async () => {
+      mockWindow()
+      await run(Navigation.pushUrl('/vozaci?kategorijaID=3', { filter: { kategorija: { id: 3, oznaka: 'C' } } }))
+      expect(Navigation.getLocation().state).toEqual({ filter: { kategorija: { id: 3, oznaka: 'C' } } })
+    })
+
+    it('replaceUrl stores state too', async () => {
+      mockWindow()
+      await run(Navigation.replaceUrl('/vozaci', { filter: {} }))
+      expect(Navigation.getLocation().state).toEqual({ filter: {} })
+    })
+
+    it('an entry pushed without state reports null, not undefined', async () => {
+      mockWindow()
+      await run(Navigation.pushUrl('/vozaci'))
+      expect(Navigation.getLocation().state).toBeNull()
+    })
+
+    it('a window without history reports null instead of throwing', () => {
+      ;(global as any).window = { location: { pathname: '/', search: '', hash: '', href: '/', origin: '' } }
+      expect(Navigation.getLocation().state).toBeNull()
+    })
+
+    // Back and forward emit the browser's own popstate, which carries no snapshot,
+    // so urlChanges reads the entry the browser restored.
+    it('urlChanges reports the state of the entry the browser restored', async () => {
+      const { entry, popHandlers } = mockWindow()
+      const seen: Array<unknown> = []
+
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const scope = yield* Scope.make()
+            const prog = yield* Platform.program<{ n: number }, { state: unknown }>(
+              [{ n: 0 }, Cmd.none],
+              (msg, m) => (seen.push(msg.state), [{ n: m.n + 1 }, Cmd.none]),
+              () => Navigation.urlChanges((location) => ({ state: location.state }))
+            ).pipe(Scope.extend(scope))
+            yield* Effect.forkScoped(Stream.runDrain(prog.model$))
+            yield* Effect.sleep('40 millis')
+
+            entry.url = '/vozaci?kategorijaID=1'
+            entry.state = { filter: { kategorija: { id: 1, oznaka: 'B' } } }
+            popHandlers.forEach((h) => h({ type: 'popstate' }))
+
+            yield* Effect.sleep('40 millis')
+            yield* Scope.close(scope, Exit.void)
+          })
+        )
+      )
+
+      expect(seen).toEqual([{ filter: { kategorija: { id: 1, oznaka: 'B' } } }])
     })
   })
 })
