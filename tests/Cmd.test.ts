@@ -31,6 +31,12 @@ describe('Cmd', () => {
       const result = await Effect.runPromise(Stream.runCollect(mapped))
       expect(Chunk.toArray(result)).toEqual([])
     })
+
+    // A parent wiring a child's commands must keep "this branch does nothing" visible.
+    it('should give back none itself', () => {
+      expect(Cmd.map((msg: string) => msg.toUpperCase())(Cmd.none)).toBe(Cmd.none)
+      expect(Cmd.batch([Cmd.map((msg: string) => msg)(Cmd.none), Cmd.none])).toBe(Cmd.none)
+    })
   })
 
   describe('batch', () => {

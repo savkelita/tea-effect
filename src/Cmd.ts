@@ -67,13 +67,17 @@ export const fromEffect = <Msg, E, R>(effect: Effect.Effect<Msg, E, R>): Cmd<Msg
 /**
  * Maps the carried messages of a command into another message type.
  *
+ * `none` maps to `none` itself: a parent that wires a child's commands through
+ * `map` keeps "this branch does nothing" visible, instead of handing back a
+ * wrapper around an empty stream.
+ *
  * @since 0.1.0
  * @category Combinators
  */
 export const map =
   <A, Msg>(f: (a: A) => Msg) =>
   <E, R>(cmd: Cmd<A, E, R>): Cmd<Msg, E, R> =>
-    Stream.map(cmd, f)
+    cmd === none ? none : Stream.map(cmd, f)
 
 /**
  * Batches multiple commands into a single command.
@@ -89,13 +93,14 @@ export const map =
  * @category Combinators
  */
 export const batch = <Msg, E, R>(cmds: ReadonlyArray<Cmd<Msg, E, R>>): Cmd<Msg, E, R> => {
-  if (cmds.length === 0) {
+  const active = cmds.filter((cmd) => cmd !== none)
+  if (active.length === 0) {
     return none
   }
-  if (cmds.length === 1) {
-    return cmds[0]
+  if (active.length === 1) {
+    return active[0]
   }
   return pipe(
-    Stream.mergeAll(cmds, { concurrency: 'unbounded' })
+    Stream.mergeAll(active, { concurrency: 'unbounded' })
   )
 }
