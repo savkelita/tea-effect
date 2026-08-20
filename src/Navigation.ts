@@ -131,7 +131,8 @@ export type UrlRequest =
  *   search: '?search=foo',
  *   hash: '#section',
  *   href: 'https://example.com/users/123?search=foo#section',
- *   origin: 'https://example.com'
+ *   origin: 'https://example.com',
+ *   state: null
  * }
  * ```
  *
@@ -149,6 +150,13 @@ export interface Location {
   readonly href: string
   /** The origin (e.g., "https://example.com") */
   readonly origin: string
+  /**
+   * Whatever `pushUrl` / `replaceUrl` stored with this history entry, `null` when nothing
+   * was stored. The browser keeps it per entry, so back and forward restore it.
+   *
+   * @since 0.8.0
+   */
+  readonly state: unknown
 }
 
 /**
@@ -161,14 +169,15 @@ export interface Location {
  */
 export const getLocation = (): Location => {
   if (typeof window === 'undefined') {
-    return { pathname: '/', search: '', hash: '', href: '/', origin: '' }
+    return { pathname: '/', search: '', hash: '', href: '/', origin: '', state: null }
   }
   return {
     pathname: window.location.pathname,
     search: window.location.search,
     hash: window.location.hash,
     href: window.location.href,
-    origin: window.location.origin
+    origin: window.location.origin,
+    state: window.history?.state ?? null
   }
 }
 
@@ -211,16 +220,19 @@ const notifyUrlChange = (): void => {
  *
  * // Navigate with query params
  * Navigation.pushUrl('/search?q=hello')
+ *
+ * // Store view state with the entry; back and forward hand it back on `location.state`
+ * Navigation.pushUrl('/search?q=hello', { filter })
  * ```
  *
  * @since 0.5.0
  * @category Commands
  */
-export const pushUrl = <Msg = never>(url: string): Cmd<Msg> =>
+export const pushUrl = <Msg = never>(url: string, state: unknown = null): Cmd<Msg> =>
   Stream.execute(
     Effect.sync(() => {
       if (typeof window !== 'undefined') {
-        window.history.pushState(null, '', url)
+        window.history.pushState(state, '', url)
         notifyUrlChange()
       }
     })
@@ -242,11 +254,11 @@ export const pushUrl = <Msg = never>(url: string): Cmd<Msg> =>
  * @since 0.5.0
  * @category Commands
  */
-export const replaceUrl = <Msg = never>(url: string): Cmd<Msg> =>
+export const replaceUrl = <Msg = never>(url: string, state: unknown = null): Cmd<Msg> =>
   Stream.execute(
     Effect.sync(() => {
       if (typeof window !== 'undefined') {
-        window.history.replaceState(null, '', url)
+        window.history.replaceState(state, '', url)
         notifyUrlChange()
       }
     })
@@ -488,7 +500,8 @@ export const linkClicks = <Msg>(toMsg: (request: UrlRequest) => Msg): Sub<Msg> =
                 search: url.search,
                 hash: url.hash,
                 href: url.href,
-                origin: url.origin
+                origin: url.origin,
+                state: null
               }
             })
           )
@@ -506,7 +519,8 @@ export const linkClicks = <Msg>(toMsg: (request: UrlRequest) => Msg): Sub<Msg> =
               search: '',
               hash: '',
               href: href,
-              origin: window.location.origin
+              origin: window.location.origin,
+              state: null
             }
           })
         )
