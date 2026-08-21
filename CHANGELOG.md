@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.2] - 2026-08-21
+
+### Fixed
+- Platform: `dispatch` now runs `update` and notifies the renderer synchronously, before it returns, instead of queueing the message for a fiber. elm-ts does the same (`state$.next(update(msg, state$.getValue()[0]))` on a `BehaviorSubject`); tea-effect had diverged, and that one-tick delay meant a renderer driving controlled DOM inputs still held the previous model while the browser had already accepted the keystroke - the reconciler wrote the stale value back, moving the caret and clearing the field native undo history
+
+### Added
+- Platform: `Program.subscribe(listener)` observes the model synchronously and returns an unsubscribe function. `model$` is unchanged and still delivers the same values through a `Stream`
+- Html: `Program.subscribeHtml(renderer)` does the same for rendered views, and `runWith` now uses it, so the view reaches the renderer inside `dispatch`
+
+### Changed
+- Platform: messages from commands and subscriptions still travel through the queue and stay serialized, but the queue no longer decides WHEN a message is applied
+
 ## [0.8.1] - 2026-08-20
 
 ### Fixed

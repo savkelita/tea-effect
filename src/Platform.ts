@@ -6,7 +6,7 @@
  *
  * @since 0.1.0
  */
-import { Effect, Stream, SubscriptionRef, Queue, Fiber, pipe, Scope, Exit, Deferred, Cause } from 'effect'
+import { Effect, Stream, SubscriptionRef, Queue, Fiber, pipe, Runtime, Scope, Exit, Deferred, Cause } from 'effect'
 import { Cmd } from './Cmd'
 import { Sub, none as subNone, getSubEntries } from './Sub'
 
@@ -43,6 +43,19 @@ export interface Program<Model, Msg, E = never, R = never> {
    * Stream of model state changes.
    */
   readonly model$: Stream.Stream<Model, E, R>
+
+  /**
+   * Observes the model SYNCHRONOUSLY: the listener is called with the current model
+   * right away, and again inside every `dispatch`, before it returns.
+   *
+   * `model$` delivers the same values through a `Stream`, which is consumed on a fiber
+   * and therefore lands a tick later. That is too late for a renderer driving controlled
+   * DOM inputs: the browser would still hold the freshly typed text while the view still
+   * carries the previous model, and the reconciler would write the old value back.
+   *
+   * Returns a function that stops the observation.
+   */
+  readonly subscribe: (listener: (model: Model) => void) => () => void
 
   /**
    * Stops the program gracefully.
@@ -111,11 +124,10 @@ export const program = <Model, Msg, E = never, R = never>(
 
     let stopped = false
 
-    // Dispatch function - adds message to queue (no-op after shutdown)
-    const dispatch: Dispatch<Msg> = (msg) => {
-      if (stopped) return
-      Effect.runSync(Queue.offer(msgQueue, msg))
-    }
+    // Runs an effect right here instead of handing it to a fiber, so `update` and the
+    // render it triggers finish inside the DOM event that dispatched the message.
+    const runtime = yield* Effect.runtime<R>()
+    const runNow = Runtime.runSync(runtime)
 
     // Process a command - run the stream and dispatch messages as they arrive
     // Commands are forked so they run concurrently (matching Elm's semantics)
@@ -128,10 +140,42 @@ export const program = <Model, Msg, E = never, R = never>(
         Effect.asVoid
       )
 
+    const listeners = new Set<(model: Model) => void>()
+
+    const subscribe = (listener: (model: Model) => void): (() => void) => {
+      listener(runNow(SubscriptionRef.get(modelRef)))
+      listeners.add(listener)
+      return () => void listeners.delete(listener)
+    }
+
+    // The single path every message takes, whether it came from the view, a command or a
+    // subscription. Synchronous on purpose - see `subscribe` on the Program interface.
+    const handle = (msg: Msg): void => {
+      if (stopped) return
+      runNow(
+        pipe(
+          Effect.gen(function* () {
+            const currentModel = yield* SubscriptionRef.get(modelRef)
+            const [newModel, cmd] = update(msg, currentModel)
+            yield* SubscriptionRef.set(modelRef, newModel)
+            yield* Effect.sync(() => {
+              for (const listener of listeners) listener(newModel)
+            })
+            yield* processCmd(cmd)
+          }),
+          Effect.catchAllCause(surfaceCause)
+        )
+      )
+    }
+
+    const dispatch: Dispatch<Msg> = handle
+
     // Process initial command
     yield* processCmd(initialCmd)
 
-    // Main update loop - processes messages and updates SubscriptionRef
+    // Messages produced by commands and subscriptions arrive on fibers, so they keep
+    // going through the queue and stay serialized; the queue no longer decides WHEN a
+    // message is applied, only that fiber-produced ones do not interleave.
     const updateLoop: Effect.Effect<never, E, R> = Effect.forever(
       Effect.gen(function* () {
         const isShutdown = yield* SubscriptionRef.get(shutdownRef)
@@ -140,12 +184,7 @@ export const program = <Model, Msg, E = never, R = never>(
         }
 
         const msg = yield* Queue.take(msgQueue)
-        const currentModel = yield* SubscriptionRef.get(modelRef)
-        const [newModel, cmd] = update(msg, currentModel)
-
-        // Update state - this automatically notifies all subscribers
-        yield* SubscriptionRef.set(modelRef, newModel)
-        yield* processCmd(cmd)
+        yield* Effect.sync(() => handle(msg))
       })
     )
 
@@ -218,6 +257,7 @@ export const program = <Model, Msg, E = never, R = never>(
     return {
       dispatch,
       model$,
+      subscribe,
       shutdown
     }
   })
