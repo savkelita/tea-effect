@@ -35,6 +35,16 @@ export interface Program<Model, Msg, Dom, E = never, R = never> extends Platform
    * Stream of rendered views.
    */
   readonly html$: Stream.Stream<Dom, E, R>
+
+  /**
+   * Observes the rendered view SYNCHRONOUSLY, like Platform's `subscribe`: the renderer
+   * runs with the current view right away, and again inside every `dispatch` before it
+   * returns. This is what `runWith` uses; `html$` carries the same views a tick later,
+   * which is too late for controlled DOM inputs.
+   *
+   * Returns a function that stops the observation.
+   */
+  readonly subscribeHtml: (renderer: (dom: Dom) => void) => () => void
 }
 
 // -------------------------------------------------------------------------------------
@@ -84,9 +94,13 @@ export const program = <Model, Msg, Dom, E = never, R = never>(
       Stream.map(model => view(model)(baseProgram.dispatch))
     )
 
+    const subscribeHtml = (renderer: (dom: Dom) => void): (() => void) =>
+      baseProgram.subscribe(model => renderer(view(model)(baseProgram.dispatch)))
+
     return {
       ...baseProgram,
-      html$
+      html$,
+      subscribeHtml
     }
   })
 
@@ -171,8 +185,10 @@ export const runWith = <Model, Msg, Dom, E, R>(
   renderer: (dom: Dom) => void
 ) =>
   (prog: Program<Model, Msg, Dom, E, R>): Effect.Effect<void, E, R> =>
-    pipe(
-      prog.html$,
-      Stream.tap(dom => Effect.sync(() => renderer(dom))),
-      Stream.runDrain
+    Effect.acquireUseRelease(
+      Effect.sync(() => prog.subscribeHtml(renderer)),
+      // `model$` carries no value here, only the program's lifetime and its failures:
+      // every view has already been handed to the renderer synchronously.
+      () => Stream.runDrain(Stream.drain(prog.model$)),
+      (unsubscribe) => Effect.sync(unsubscribe)
     )
