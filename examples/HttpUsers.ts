@@ -114,11 +114,17 @@ const fetchUsersCmd: Cmd.Cmd<Msg, never, Http.HttpRequirements> = Http.send(fetc
   onError: (error): Msg => ({ type: 'UsersFailed', error })
 })
 
-const createUserCmd = (name: string): Cmd.Cmd<Msg, never, Http.HttpRequirements> =>
-  Http.send(createUserRequest({ name, username: name.toLowerCase().replace(/\s/g, ''), email: `${name.toLowerCase().replace(/\s/g, '')}@example.com` }), {
+const createUserCmd = (name: string): Cmd.Cmd<Msg, never, Http.HttpRequirements> => {
+  // The endpoint wants a full user, but the form only collects a name, so the
+  // remaining fields are derived from it.
+  const handle = name.toLowerCase().replace(/\s/g, '')
+  const input: CreateUserInput = { name, username: handle, email: `${handle}@example.com` }
+
+  return Http.send(createUserRequest(input), {
     onSuccess: (user): Msg => ({ type: 'UserCreated', user }),
     onError: (error): Msg => ({ type: 'UsersFailed', error })
   })
+}
 
 const deleteUserCmd = (id: number): Cmd.Cmd<Msg, never, Http.HttpRequirements> =>
   Http.send(deleteUserRequest(id), {
