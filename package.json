@@ -21,6 +21,10 @@
     "type": "git",
     "url": "https://github.com/savkelita/tea-effect"
   },
+  "homepage": "https://github.com/savkelita/tea-effect#readme",
+  "bugs": {
+    "url": "https://github.com/savkelita/tea-effect/issues"
+  },
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
@@ -93,6 +97,11 @@
     "example:counter": "npx tsx examples/test-counter.ts",
     "example:userlist": "npx tsx examples/test-runtime.ts",
     "example:http": "npx tsx examples/test-http.ts",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs",
+    "docs:typecheck": "tsc -p docs/examples/tsconfig.json",
+    "docs:api": "npm run build && docgen",
     "prepublishOnly": "npm run build"
   },
   "peerDependencies": {
@@ -109,14 +118,18 @@
     }
   },
   "devDependencies": {
+    "@effect/docgen": "^0.5.2",
     "@effect/platform": "^0.94.0",
     "@effect/platform-node": "^0.104.0",
     "@types/node": "^22.0.0",
     "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.3.7",
     "effect": "^3.19.15",
     "react": "^18.2.0",
+    "react-dom": "^18.3.1",
     "tsup": "^8.0.0",
     "typescript": "^5.3.0",
+    "vitepress": "^1.6.4",
     "vitest": "^1.0.0"
   }
 }
