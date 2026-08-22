@@ -224,11 +224,20 @@ export const keysTask: Effect.Effect<ReadonlyArray<string>, LocalStorageError> =
  * @category Commands
  * @example
  * ```ts
- * const Counter = Schema.Struct({ count: Schema.Number })
+ * import { Option, Schema } from 'effect'
+ * import * as LocalStorage from 'tea-effect/LocalStorage'
  *
+ * const Counter = Schema.Struct({ count: Schema.Number })
+ * type Counter = Schema.Schema.Type<typeof Counter>
+ *
+ * type Msg =
+ *   | { readonly type: 'Loaded'; readonly data: Option.Option<Counter> }
+ *   | { readonly type: 'StorageError'; readonly error: LocalStorage.LocalStorageError }
+ *
+ * // `data` is an Option: None simply means the key was not there.
  * const loadCounter = LocalStorage.get('counter', Counter, {
- *   onSuccess: (data) => ({ type: 'Loaded', data }),
- *   onError: (err) => ({ type: 'StorageError', err })
+ *   onSuccess: (data): Msg => ({ type: 'Loaded', data }),
+ *   onError: (error): Msg => ({ type: 'StorageError', error })
  * })
  * ```
  */
@@ -256,11 +265,18 @@ export const get = <A, I, Msg>(
  * @category Commands
  * @example
  * ```ts
+ * import { Schema } from 'effect'
+ * import * as LocalStorage from 'tea-effect/LocalStorage'
+ *
  * const Counter = Schema.Struct({ count: Schema.Number })
  *
+ * type Msg =
+ *   | { readonly type: 'Saved' }
+ *   | { readonly type: 'StorageError'; readonly error: LocalStorage.LocalStorageError }
+ *
  * const saveCounter = LocalStorage.set('counter', Counter, { count: 5 }, {
- *   onSuccess: () => ({ type: 'Saved' }),
- *   onError: (err) => ({ type: 'StorageError', err })
+ *   onSuccess: (): Msg => ({ type: 'Saved' }),
+ *   onError: (error): Msg => ({ type: 'StorageError', error })
  * })
  * ```
  */
@@ -288,7 +304,12 @@ export const set = <A, I, Msg>(
  * @category Commands
  * @example
  * ```ts
- * // Fire and forget - no message produced
+ * import { Schema } from 'effect'
+ * import * as LocalStorage from 'tea-effect/LocalStorage'
+ *
+ * const Counter = Schema.Struct({ count: Schema.Number })
+ *
+ * // Fire and forget: no message is produced, and a quota error is swallowed.
  * const saveCounter = LocalStorage.setIgnoreErrors('counter', Counter, { count: 5 })
  * ```
  */
@@ -382,12 +403,22 @@ export const keys = <Msg>(handlers: {
  * @category Subscriptions
  * @example
  * ```ts
- * const Counter = Schema.Struct({ count: Schema.Number })
+ * import { Option, Schema } from 'effect'
+ * import * as LocalStorage from 'tea-effect/LocalStorage'
  *
- * const subscriptions = (model: Model) =>
+ * const Counter = Schema.Struct({ count: Schema.Number })
+ * type Counter = Schema.Schema.Type<typeof Counter>
+ *
+ * type Msg =
+ *   | { readonly type: 'SyncedFromOtherTab'; readonly data: Option.Option<Counter> }
+ *   | { readonly type: 'SyncError'; readonly error: LocalStorage.LocalStorageError }
+ *
+ * // Takes no model, per the keep-alive note above: the handlers are captured once,
+ * // so reading the model here would leave it frozen at the first render.
+ * const subscriptions = () =>
  *   LocalStorage.onChange('counter', Counter, {
- *     onSuccess: (data) => ({ type: 'SyncedFromOtherTab', data }),
- *     onError: (err) => ({ type: 'SyncError', err })
+ *     onSuccess: (data): Msg => ({ type: 'SyncedFromOtherTab', data }),
+ *     onError: (error): Msg => ({ type: 'SyncError', error })
  *   })
  * ```
  */
