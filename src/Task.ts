@@ -55,9 +55,14 @@ export const fail = <E>(e: E): Task<never, E> => Effect.fail(e)
  *
  * @example
  * ```ts
- * const getTimeCmd = Task.perform(
- *   (time) => ({ type: 'GotTime', time }),
- *   Effect.sync(() => Date.now())
+ * import { Effect, pipe } from 'effect'
+ * import * as Task from 'tea-effect/Task'
+ *
+ * type Msg = { readonly type: 'GotTime'; readonly time: number }
+ *
+ * const getTimeCmd = pipe(
+ *   Effect.sync(() => Date.now()),
+ *   Task.perform((time: number): Msg => ({ type: 'GotTime', time }))
  * )
  * ```
  *
@@ -73,12 +78,28 @@ export const perform = <A, Msg>(f: (a: A) => Msg) =>
  *
  * @example
  * ```ts
- * const fetchUserCmd = Task.attempt(
- *   Either.match({
- *     onLeft: (error) => ({ type: 'FetchFailed', error }),
- *     onRight: (user) => ({ type: 'FetchSucceeded', user })
- *   }),
- *   fetchUser(userId)
+ * import { Either, pipe } from 'effect'
+ * import * as Task from 'tea-effect/Task'
+ *
+ * type User = { readonly id: number; readonly name: string }
+ * type ApiError = { readonly _tag: 'ApiError'; readonly status: number }
+ *
+ * type Msg =
+ *   | { readonly type: 'FetchSucceeded'; readonly user: User }
+ *   | { readonly type: 'FetchFailed'; readonly error: ApiError }
+ *
+ * // `fetchUser` is yours - any task that can fail will do.
+ * const fetchUserCmd = (
+ *   fetchUser: (id: number) => Task.Task<User, ApiError>,
+ *   userId: number
+ * ) => pipe(
+ *   fetchUser(userId),
+ *   Task.attempt(
+ *     Either.match({
+ *       onLeft: (error: ApiError): Msg => ({ type: 'FetchFailed', error }),
+ *       onRight: (user: User): Msg => ({ type: 'FetchSucceeded', user })
+ *     })
+ *   )
  * )
  * ```
  *
@@ -100,11 +121,25 @@ export const attempt = <E, A, Msg>(f: (result: Either.Either<A, E>) => Msg) =>
  *
  * @example
  * ```ts
- * const fetchUserCmd = pipe(
+ * import { pipe } from 'effect'
+ * import * as Task from 'tea-effect/Task'
+ *
+ * type User = { readonly id: number; readonly name: string }
+ * type ApiError = { readonly _tag: 'ApiError'; readonly status: number }
+ *
+ * type Msg =
+ *   | { readonly type: 'FetchSucceeded'; readonly user: User }
+ *   | { readonly type: 'FetchFailed'; readonly error: ApiError }
+ *
+ * // `fetchUser` is yours - any task that can fail will do.
+ * const fetchUserCmd = (
+ *   fetchUser: (id: number) => Task.Task<User, ApiError>,
+ *   userId: number
+ * ) => pipe(
  *   fetchUser(userId),
  *   Task.attemptWith({
- *     onSuccess: (user) => ({ type: 'FetchSucceeded', user }),
- *     onFailure: (error) => ({ type: 'FetchFailed', error })
+ *     onSuccess: (user: User): Msg => ({ type: 'FetchSucceeded', user }),
+ *     onFailure: (error: ApiError): Msg => ({ type: 'FetchFailed', error })
  *   })
  * )
  * ```
