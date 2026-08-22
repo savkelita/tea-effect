@@ -35,3 +35,31 @@ jobs:
       - name: Build
         run: npm run build
 
+  docs:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js 22.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Every snippet on the docs site is imported from a real file under
+      # docs/examples. This is what stops the documentation from drifting.
+      - name: Type check documentation examples
+        run: npm run docs:typecheck
+
+      # docgen compiles AND executes every @example block in src/, against the
+      # package's public entry points. A JSDoc example that does not run fails here.
+      - name: Type check and run JSDoc examples
+        run: npm run docs:api
+
+      - name: Build documentation site
+        run: npm run docs:build
+
