@@ -52,7 +52,9 @@ export const fail: Parser<never> = {
  *
  * @example
  * ```ts
- * const parser = lit('users')
+ * import { Parser } from 'tea-effect/Router'
+ *
+ * const parser = Parser.lit('users')
  * // Matches: /users/...
  * // Fails: /posts/...
  * ```
@@ -74,7 +76,9 @@ export const lit = (segment: string): Parser<{}> => ({
  *
  * @example
  * ```ts
- * const parser = str('name')
+ * import { Parser } from 'tea-effect/Router'
+ *
+ * const parser = Parser.str('name')
  * // /john → { name: 'john' }
  * ```
  *
@@ -99,7 +103,9 @@ export const str = <K extends string>(key: K): Parser<{ readonly [P in K]: strin
  *
  * @example
  * ```ts
- * const parser = int('id')
+ * import { Parser } from 'tea-effect/Router'
+ *
+ * const parser = Parser.int('id')
  * // /42 → { id: 42 }
  * // /abc → fails
  * ```
@@ -128,7 +134,10 @@ export const int = <K extends string>(key: K): Parser<{ readonly [P in K]: numbe
  *
  * @example
  * ```ts
- * const parser = param('id', Schema.UUID)
+ * import { Schema } from 'effect'
+ * import { Parser } from 'tea-effect/Router'
+ *
+ * const parser = Parser.param('id', Schema.UUID)
  * // /550e8400-e29b-41d4-a716-446655440000 → { id: UUID }
  * ```
  *
@@ -169,7 +178,10 @@ export type QueryRecord = Record<string, string | ReadonlyArray<string> | undefi
  *
  * @example
  * ```ts
- * const parser = query(Schema.Struct({
+ * import { Schema } from 'effect'
+ * import { Parser } from 'tea-effect/Router'
+ *
+ * const parser = Parser.query(Schema.Struct({
  *   q: Schema.String,
  *   page: Schema.optional(Schema.NumberFromString)
  * }))
@@ -209,7 +221,9 @@ export const query = <A, I>(
  *
  * @example
  * ```ts
- * const parser = zip(lit('users'), end)
+ * import { Parser } from 'tea-effect/Router'
+ *
+ * const parser = Parser.zip(Parser.lit('users'), Parser.end)
  * // Matches: /users
  * // Fails: /users/123
  * ```
@@ -268,7 +282,9 @@ export const flatMap = <A, B>(
  *
  * @example
  * ```ts
- * const parser = zip(lit('users'), int('id'))
+ * import { Parser } from 'tea-effect/Router'
+ *
+ * const parser = Parser.zip(Parser.lit('users'), Parser.int('id'))
  * // /users/42 → { id: 42 }
  * ```
  *

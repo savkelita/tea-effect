@@ -52,15 +52,49 @@
 
 import { Option, Schema } from 'effect'
 import type { Location } from './Navigation'
-import { Route } from './Router/Route'
+import { Route as RouteClass } from './Router/Route'
 import * as Parser from './Router/Parser'
 import * as Formatter from './Router/Formatter'
 import * as Matcher from './Router/Matcher'
 
-// Re-exports
-export { Route } from './Router/Route'
+/**
+ * A URL split into what routing cares about: path segments and query params.
+ *
+ * @since 0.6.0
+ * @category Model
+ */
+export const Route = RouteClass
+
+/**
+ * The parsed URL itself - an instance of the `Route` class above.
+ *
+ * @since 0.6.0
+ * @category Model
+ */
+export type Route = RouteClass
+
+/**
+ * Low-level building blocks that read a `Route` into a value.
+ *
+ * Reach for these only when `path` cannot express the shape you need.
+ *
+ * @since 0.6.0
+ */
 export * as Parser from './Router/Parser'
+
+/**
+ * Low-level building blocks that write a value back out as a `Route`.
+ *
+ * @since 0.6.0
+ */
 export * as Formatter from './Router/Formatter'
+
+/**
+ * A `Parser` and a `Formatter` paired, which is what makes a route bidirectional:
+ * the same definition both parses a URL and formats one.
+ *
+ * @since 0.6.0
+ */
 export * as Matcher from './Router/Matcher'
 
 /**
@@ -77,16 +111,9 @@ export const IntFromString: Schema.Schema<number, string> = Schema.NumberFromStr
 // -------------------------------------------------------------------------------------
 
 /**
- * Extract parameter names from a path pattern.
+ * Walks a rooted pattern, peeling off one `:param` per step.
  *
- * @example
- * ```ts
- * type Params = ExtractParams<'/users/:id/posts/:postId'>
- * // = 'id' | 'postId'
- * ```
- *
- * @since 0.6.0
- * @category Type utilities
+ * @internal
  */
 type ExtractParamsRooted<T extends string> = T extends `${string}/:${infer Param}/${infer Rest}`
   ? Param | ExtractParamsRooted<`/${Rest}`>
@@ -94,6 +121,22 @@ type ExtractParamsRooted<T extends string> = T extends `${string}/:${infer Param
     ? Param
     : never
 
+/**
+ * Extract parameter names from a path pattern.
+ *
+ * The pattern is rooted first, so an unrooted `'users/:id'` behaves like `'/users/:id'`.
+ *
+ * @example
+ * ```ts
+ * import type * as Router from 'tea-effect/Router'
+ *
+ * type Params = Router.ExtractParams<'/users/:id/posts/:postId'>
+ * // = 'id' | 'postId'
+ * ```
+ *
+ * @since 0.6.0
+ * @category Type utilities
+ */
 export type ExtractParams<T extends string> = ExtractParamsRooted<T extends `/${string}` ? T : `/${T}`>
 
 /**
@@ -167,14 +210,18 @@ export interface RouteBuilder<Tag extends string, Params> {
  *
  * @example
  * ```ts
- * // Simple path
- * Router.path('/')
+ * import { Schema } from 'effect'
+ * import * as Router from 'tea-effect/Router'
  *
- * // With parameters
- * Router.path('/users/:id', { id: Schema.NumberFromString })
+ * // Simple path
+ * const home = Router.path('/')
+ *
+ * // With parameters. `IntFromString` rejects 'NaN', 'Infinity' and non-integers,
+ * // which bare `Schema.NumberFromString` would accept as an id.
+ * const user = Router.path('/users/:id', { id: Router.IntFromString })
  *
  * // With query params
- * Router.path('/search').query(
+ * const search = Router.path('/search').query(
  *   Schema.Struct({
  *     q: Schema.String,
  *     page: Schema.optional(Schema.NumberFromString)
@@ -362,9 +409,12 @@ export type Routes<T extends Record<string, RouteBuilder<any, any> | RouteDefini
  *
  * @example
  * ```ts
+ * import { Schema } from 'effect'
+ * import * as Router from 'tea-effect/Router'
+ *
  * const routes = Router.routes({
  *   home: Router.path('/'),
- *   user: Router.path('/users/:id', { id: Schema.NumberFromString }),
+ *   user: Router.path('/users/:id', { id: Router.IntFromString }),
  *   search: Router.path('/search').query(Schema.Struct({ q: Schema.String }))
  * })
  *
@@ -414,9 +464,11 @@ export const routes = <
  *
  * @example
  * ```ts
+ * import * as Router from 'tea-effect/Router'
+ *
  * const routes = Router.routes({
  *   home: Router.path('/'),
- *   user: Router.path('/users/:id', { id: Schema.NumberFromString })
+ *   user: Router.path('/users/:id', { id: Router.IntFromString })
  * })
  *
  * type Route = Router.RouteType<typeof routes>
@@ -477,6 +529,12 @@ export type FormatParams<T> = T extends RouteDefinition<any, infer Params, infer
  *
  * @example
  * ```ts
+ * import * as Router from 'tea-effect/Router'
+ *
+ * const routes = Router.routes({
+ *   user: Router.path('/users/:id', { id: Router.IntFromString })
+ * })
+ *
  * const result = Router.parse(routes, { pathname: '/users/42', search: '' })
  * // → Option.some({ _tag: 'user', params: { id: 42 } })
  * ```
@@ -512,7 +570,17 @@ export const parse = <T extends Routes<any>>(
  *
  * @example
  * ```ts
- * const route = Router.parseOr(routes, location, { _tag: 'notFound' as const })
+ * import * as Navigation from 'tea-effect/Navigation'
+ * import * as Router from 'tea-effect/Router'
+ *
+ * const routes = Router.routes({
+ *   home: Router.path('/'),
+ *   user: Router.path('/users/:id', { id: Router.IntFromString })
+ * })
+ *
+ * // The location comes from Navigation: getLocation() at startup, or the location
+ * // carried by the onUrlChange message while the program runs.
+ * const route = Router.parseOr(routes, Navigation.getLocation(), { _tag: 'notFound' as const })
  * ```
  *
  * @since 0.6.0
@@ -568,10 +636,20 @@ function buildRouteObject(
  *
  * @example
  * ```ts
- * Router.format(routes.user, { id: 42 })
+ * import { Schema } from 'effect'
+ * import * as Router from 'tea-effect/Router'
+ *
+ * const routes = Router.routes({
+ *   user: Router.path('/users/:id', { id: Router.IntFromString }),
+ *   search: Router.path('/search').query(
+ *     Schema.Struct({ q: Schema.String, page: Schema.optional(Schema.NumberFromString) })
+ *   )
+ * })
+ *
+ * const userUrl = Router.format(routes.user, { id: 42 })
  * // → '/users/42'
  *
- * Router.format(routes.search, { q: 'hello', page: 2 })
+ * const searchUrl = Router.format(routes.search, { q: 'hello', page: 2 })
  * // → '/search?q=hello&page=2'
  * ```
  *
