@@ -96,13 +96,34 @@ export const programWithFlags = <Flags, Model, Msg, E = never, R = never>(
  *
  * @example
  * ```ts
+ * import { Effect } from 'effect'
+ * import * as React from 'react'
  * import { createRoot } from 'react-dom/client'
+ * import * as Cmd from 'tea-effect/Cmd'
+ * import * as TeaReact from 'tea-effect/React'
  *
- * const root = createRoot(document.getElementById('app')!)
+ * type Model = { readonly count: number }
+ * type Msg = { readonly type: 'Increment' }
  *
- * Effect.runPromise(
- *   React.run(myProgram, (element) => root.render(element))
- * )
+ * const init: readonly [Model, Cmd.Cmd<Msg>] = [{ count: 0 }, Cmd.none]
+ *
+ * const update = (_msg: Msg, model: Model): readonly [Model, Cmd.Cmd<Msg>] => [
+ *   { count: model.count + 1 },
+ *   Cmd.none
+ * ]
+ *
+ * const view = (model: Model): TeaReact.Html<Msg> => (dispatch) =>
+ *   React.createElement('button', { onClick: () => dispatch({ type: 'Increment' }) }, model.count)
+ *
+ * // `program` builds the Effect, `run` starts it and hands every rendered view
+ * // to the renderer. Nothing happens until the Effect is executed.
+ * const main = () => {
+ *   const root = createRoot(document.getElementById('app')!)
+ *
+ *   return Effect.runPromise(
+ *     TeaReact.run(TeaReact.program(init, update, view), (element) => root.render(element))
+ *   )
+ * }
  * ```
  *
  * @since 0.1.0
@@ -164,25 +185,35 @@ export interface UseProgramResult<Model, Msg> {
  * @example
  * ```ts
  * import * as React from 'react'
+ * import * as Cmd from 'tea-effect/Cmd'
  * import { makeUseProgram } from 'tea-effect/React'
  *
+ * type Model = { readonly count: number }
+ * type Msg = { readonly type: 'Increment' } | { readonly type: 'Decrement' }
+ *
+ * // Module level: the factory runs once, not on every render.
  * const useProgram = makeUseProgram(React)
  *
- * function Counter() {
- *   const { model, dispatch } = useProgram(
- *     [{ count: 0 }, Cmd.none],
- *     (msg, model) => {
- *       switch (msg.type) {
- *         case 'Increment':
- *           return [{ count: model.count + 1 }, Cmd.none]
- *       }
- *     }
- *   )
+ * const init: readonly [Model, Cmd.Cmd<Msg>] = [{ count: 0 }, Cmd.none]
  *
- *   return (
- *     <button onClick={() => dispatch({ type: 'Increment' })}>
- *       Count: {model.count}
- *     </button>
+ * const update = (msg: Msg, model: Model): readonly [Model, Cmd.Cmd<Msg>] => {
+ *   switch (msg.type) {
+ *     case 'Increment':
+ *       return [{ count: model.count + 1 }, Cmd.none]
+ *     case 'Decrement':
+ *       return [{ count: model.count - 1 }, Cmd.none]
+ *   }
+ * }
+ *
+ * // Written with createElement so this example compiles as plain TypeScript.
+ * // In your own .tsx file this is ordinary JSX.
+ * function Counter() {
+ *   const { model, dispatch } = useProgram(init, update)
+ *
+ *   return React.createElement(
+ *     'button',
+ *     { onClick: () => dispatch({ type: 'Increment' }) },
+ *     `Count: ${model.count}`
  *   )
  * }
  * ```
