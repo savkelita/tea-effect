@@ -8,21 +8,26 @@
  *
  * @example
  * ```ts
- * import { Http } from 'tea-effect'
  * import { Schema } from 'effect'
+ * import * as Http from 'tea-effect/Http'
  *
  * const User = Schema.Struct({
  *   id: Schema.Number,
  *   name: Schema.String
  * })
+ * type User = Schema.Schema.Type<typeof User>
  *
- * // Create a request
+ * type Msg =
+ *   | { readonly type: 'UsersLoaded'; readonly users: ReadonlyArray<User> }
+ *   | { readonly type: 'UsersFailed'; readonly error: Http.HttpError }
+ *
+ * // A request is a value - nothing is sent yet.
  * const fetchUsers = Http.get('/api/users', Http.expectJson(Schema.Array(User)))
  *
- * // Convert to Cmd
+ * // Both outcomes become messages, so this Cmd cannot fail: its `E` is `never`.
  * const cmd = Http.send(fetchUsers, {
- *   onSuccess: (users) => ({ type: 'UsersLoaded', users }),
- *   onError: (err) => ({ type: 'UsersFailed', err })
+ *   onSuccess: (users): Msg => ({ type: 'UsersLoaded', users }),
+ *   onError: (error): Msg => ({ type: 'UsersFailed', error })
  * })
  * ```
  *
@@ -182,8 +187,12 @@ export const badRequestBody = (error: unknown): HttpError => ({ _tag: 'BadReques
  *
  * @example
  * ```ts
+ * import { Schema } from 'effect'
+ * import * as Http from 'tea-effect/Http'
+ *
  * const User = Schema.Struct({ id: Schema.Number, name: Schema.String })
- * const expect = Http.expectJson(User)
+ *
+ * const expectUser = Http.expectJson(User)
  * ```
  *
  * @since 0.2.0
@@ -233,7 +242,11 @@ export const emptyBody: Body = {
  *
  * @example
  * ```ts
+ * import { Schema } from 'effect'
+ * import * as Http from 'tea-effect/Http'
+ *
  * const CreateUser = Schema.Struct({ name: Schema.String, email: Schema.String })
+ *
  * const body = Http.jsonBody(CreateUser, { name: 'John', email: 'john@example.com' })
  * ```
  *
@@ -255,6 +268,9 @@ export const jsonBody = <A, I>(
  *
  * @example
  * ```ts
+ * import * as Http from 'tea-effect/Http'
+ *
+ * // No schema: the value is serialised as-is, with no encoding step.
  * const body = Http.rawBody({ name: 'John' })
  * ```
  *
@@ -276,7 +292,12 @@ export const rawBody = <A>(value: A): Body => ({
  *
  * @example
  * ```ts
- * const fetchUsers = Http.get('/api/users', Http.expectJson(UsersSchema))
+ * import { Schema } from 'effect'
+ * import * as Http from 'tea-effect/Http'
+ *
+ * const User = Schema.Struct({ id: Schema.Number, name: Schema.String })
+ *
+ * const fetchUsers = Http.get('/api/users', Http.expectJson(Schema.Array(User)))
  * ```
  *
  * @since 0.2.0
@@ -297,8 +318,17 @@ export const get = <A>(url: string, expect: Expect<A>): Request<A> => ({
  *
  * @example
  * ```ts
+ * import { Schema } from 'effect'
+ * import * as Http from 'tea-effect/Http'
+ *
+ * const User = Schema.Struct({ id: Schema.Number, name: Schema.String })
  * const CreateUser = Schema.Struct({ name: Schema.String })
- * const createUser = Http.post('/api/users', Http.jsonBody(CreateUser, { name: 'John' }), Http.expectJson(UserSchema))
+ *
+ * const createUser = Http.post(
+ *   '/api/users',
+ *   Http.jsonBody(CreateUser, { name: 'John' }),
+ *   Http.expectJson(User)
+ * )
  * ```
  *
  * @since 0.2.0
@@ -393,12 +423,22 @@ export const request = <A>(config: {
 /**
  * Adds a header to the request.
  *
+ * Use this for headers this module has no helper for; `Authorization` and
+ * `Content-Type` have `bearerToken` / `authorization` and `contentType`.
+ *
  * @example
  * ```ts
- * const req = pipe(
- *   Http.get('/api/users', Http.expectJson(UsersSchema)),
- *   Http.withHeader('Authorization', 'Bearer token')
- * )
+ * import { Schema, pipe } from 'effect'
+ * import * as Http from 'tea-effect/Http'
+ *
+ * const User = Schema.Struct({ id: Schema.Number, name: Schema.String })
+ *
+ * // A function, so the key comes from your configuration rather than a literal.
+ * const usersRequest = (apiKey: string) =>
+ *   pipe(
+ *     Http.get('/api/users', Http.expectJson(Schema.Array(User))),
+ *     Http.withHeader('X-Api-Key', apiKey)
+ *   )
  * ```
  *
  * @since 0.2.0
@@ -514,12 +554,19 @@ const mapHttpClientError = (error: HttpClientError.HttpClientError): HttpError =
  *
  * @example
  * ```ts
- * // For testing with mock client
- * const task = Http.toTaskRaw(Http.get('/api/users', Http.expectJson(UsersSchema)))
- * // task: Task<Users[], HttpError, HttpClient.HttpClient>
+ * import { Effect, Layer, Schema } from 'effect'
+ * import * as HttpClient from '@effect/platform/HttpClient'
+ * import * as Http from 'tea-effect/Http'
  *
- * // Provide mock layer in tests
- * task.pipe(Effect.provide(MockHttpClient))
+ * const User = Schema.Struct({ id: Schema.Number, name: Schema.String })
+ *
+ * const task = Http.toTaskRaw(Http.get('/api/users', Http.expectJson(Schema.Array(User))))
+ * // task: Task<ReadonlyArray<User>, HttpError, HttpClient.HttpClient>
+ *
+ * // HttpClient is left in `R`, so a test supplies its own layer - one that
+ * // answers with canned responses instead of reaching the network.
+ * const underTest = (testClient: Layer.Layer<HttpClient.HttpClient>) =>
+ *   task.pipe(Effect.provide(testClient))
  * ```
  *
  * @since 0.2.0
@@ -621,8 +668,14 @@ export const toTaskRaw = <A>(req: Request<A>): Task<A, HttpError, HttpClient.Htt
  *
  * @example
  * ```ts
- * const task = Http.toTask(Http.get('/api/users', Http.expectJson(UsersSchema)))
- * // task: Task<Users[], HttpError>
+ * import { Schema } from 'effect'
+ * import * as Http from 'tea-effect/Http'
+ *
+ * const User = Schema.Struct({ id: Schema.Number, name: Schema.String })
+ *
+ * const task = Http.toTask(Http.get('/api/users', Http.expectJson(Schema.Array(User))))
+ * // task: Task<ReadonlyArray<User>, HttpError>
+ * // FetchHttpClient is already provided, so nothing is left in `R`.
  * ```
  *
  * @since 0.2.0
@@ -637,10 +690,21 @@ export const toTask = <A>(req: Request<A>): Task<A, HttpError, HttpRequirements>
  *
  * @example
  * ```ts
- * // For testing
+ * import { Schema } from 'effect'
+ * import * as Http from 'tea-effect/Http'
+ *
+ * const User = Schema.Struct({ id: Schema.Number, name: Schema.String })
+ * type User = Schema.Schema.Type<typeof User>
+ *
+ * type Msg =
+ *   | { readonly type: 'UsersLoaded'; readonly users: ReadonlyArray<User> }
+ *   | { readonly type: 'UsersFailed'; readonly error: Http.HttpError }
+ *
+ * const fetchUsers = Http.get('/api/users', Http.expectJson(Schema.Array(User)))
+ *
  * const cmd = Http.sendRaw(fetchUsers, {
- *   onSuccess: (users) => ({ type: 'UsersLoaded', users }),
- *   onError: (err) => ({ type: 'UsersFailed', err })
+ *   onSuccess: (users): Msg => ({ type: 'UsersLoaded', users }),
+ *   onError: (error): Msg => ({ type: 'UsersFailed', error })
  * })
  * // cmd: Cmd<Msg, never, HttpClient.HttpClient>
  * ```
@@ -670,11 +734,21 @@ export const sendRaw = <A, Msg>(
  *
  * @example
  * ```ts
- * const fetchUsers = Http.get('/api/users', Http.expectJson(UsersSchema))
+ * import { Schema } from 'effect'
+ * import * as Http from 'tea-effect/Http'
+ *
+ * const User = Schema.Struct({ id: Schema.Number, name: Schema.String })
+ * type User = Schema.Schema.Type<typeof User>
+ *
+ * type Msg =
+ *   | { readonly type: 'UsersLoaded'; readonly users: ReadonlyArray<User> }
+ *   | { readonly type: 'UsersFailed'; readonly error: Http.HttpError }
+ *
+ * const fetchUsers = Http.get('/api/users', Http.expectJson(Schema.Array(User)))
  *
  * const cmd = Http.send(fetchUsers, {
- *   onSuccess: (users) => ({ type: 'UsersLoaded', users }),
- *   onError: (err) => ({ type: 'UsersFailed', err })
+ *   onSuccess: (users): Msg => ({ type: 'UsersLoaded', users }),
+ *   onError: (error): Msg => ({ type: 'UsersFailed', error })
  * })
  * ```
  *
@@ -701,10 +775,20 @@ export const send = <A, Msg>(
  *
  * @example
  * ```ts
+ * import { Schema } from 'effect'
+ * import * as Http from 'tea-effect/Http'
+ *
+ * const User = Schema.Struct({ id: Schema.Number, name: Schema.String })
+ * type User = Schema.Schema.Type<typeof User>
+ *
+ * type Msg =
+ *   | { readonly type: 'UsersLoaded'; readonly users: ReadonlyArray<User> }
+ *   | { readonly type: 'UsersFailed'; readonly error: Http.HttpError }
+ *
  * const cmd = Http.sendBy(
- *   (users) => ({ type: 'UsersLoaded', users }),
- *   (err) => ({ type: 'UsersFailed', err })
- * )(Http.get('/api/users', Http.expectJson(UsersSchema)))
+ *   (users: ReadonlyArray<User>): Msg => ({ type: 'UsersLoaded', users }),
+ *   (error: Http.HttpError): Msg => ({ type: 'UsersFailed', error })
+ * )(Http.get('/api/users', Http.expectJson(Schema.Array(User))))
  * ```
  *
  * @since 0.2.0
