@@ -97,12 +97,22 @@ import * as Html from './Html'
  *
  * @example
  * ```ts
- * const update = (msg: Msg, model: Model): [Model, Cmd.Cmd<Msg>] => {
+ * import * as Cmd from 'tea-effect/Cmd'
+ * import * as Navigation from 'tea-effect/Navigation'
+ *
+ * type Model = { readonly url: string }
+ * type Msg = { readonly type: 'LinkClicked'; readonly request: Navigation.UrlRequest }
+ *
+ * const update = (msg: Msg, model: Model): readonly [Model, Cmd.Cmd<Msg>] => {
  *   switch (msg.type) {
  *     case 'LinkClicked':
  *       switch (msg.request._tag) {
- *         case 'Internal':
- *           return [model, Navigation.pushUrl(msg.request.location.pathname)]
+ *         case 'Internal': {
+ *           // Rebuild the whole URL: `pathname` alone drops the query and hash,
+ *           // so a click on /search?q=hello would navigate to /search.
+ *           const { pathname, search, hash } = msg.request.location
+ *           return [model, Navigation.pushUrl(`${pathname}${search}${hash}`)]
+ *         }
  *         case 'External':
  *           return [model, Navigation.load(msg.request.href)]
  *       }
@@ -125,6 +135,8 @@ export type UrlRequest =
  *
  * @example
  * ```ts
+ * import * as Navigation from 'tea-effect/Navigation'
+ *
  * // For URL: https://example.com/users/123?search=foo#section
  * const location: Navigation.Location = {
  *   pathname: '/users/123',
@@ -215,14 +227,16 @@ const notifyUrlChange = (): void => {
  *
  * @example
  * ```ts
- * // Navigate to a new page
- * Navigation.pushUrl('/users/123')
+ * import * as Navigation from 'tea-effect/Navigation'
+ *
+ * // Each of these is a Cmd. Return it from `update`; on its own it does nothing.
+ * const toUser = Navigation.pushUrl('/users/123')
  *
  * // Navigate with query params
- * Navigation.pushUrl('/search?q=hello')
+ * const toSearch = Navigation.pushUrl('/search?q=hello')
  *
  * // Store view state with the entry; back and forward hand it back on `location.state`
- * Navigation.pushUrl('/search?q=hello', { filter })
+ * const toSearchKeepingFilter = Navigation.pushUrl('/search?q=hello', { filter: 'active' })
  * ```
  *
  * @since 0.5.0
@@ -247,8 +261,10 @@ export const pushUrl = <Msg = never>(url: string, state: unknown = null): Cmd<Ms
  *
  * @example
  * ```ts
+ * import * as Navigation from 'tea-effect/Navigation'
+ *
  * // Update filters without cluttering history
- * Navigation.replaceUrl('/users?sort=name&order=asc')
+ * const sorted = Navigation.replaceUrl('/users?sort=name&order=asc')
  * ```
  *
  * @since 0.5.0
@@ -271,11 +287,13 @@ export const replaceUrl = <Msg = never>(url: string, state: unknown = null): Cmd
  *
  * @example
  * ```ts
+ * import * as Navigation from 'tea-effect/Navigation'
+ *
  * // Go back one page
- * Navigation.back(1)
+ * const goBackOne = Navigation.back(1)
  *
  * // Go back three pages
- * Navigation.back(3)
+ * const goBackThree = Navigation.back(3)
  * ```
  *
  * @since 0.5.0
@@ -297,8 +315,10 @@ export const back = <Msg = never>(steps: number): Cmd<Msg> =>
  *
  * @example
  * ```ts
+ * import * as Navigation from 'tea-effect/Navigation'
+ *
  * // Go forward one page
- * Navigation.forward(1)
+ * const goForwardOne = Navigation.forward(1)
  * ```
  *
  * @since 0.5.0
@@ -325,11 +345,14 @@ export const forward = <Msg = never>(steps: number): Cmd<Msg> =>
  *
  * @example
  * ```ts
- * // Navigate to external site
- * Navigation.load('https://elm-lang.org')
+ * import * as Navigation from 'tea-effect/Navigation'
  *
- * // Force reload current page from server
- * Navigation.load(window.location.href)
+ * // Full page load of an external site - this leaves your program
+ * const toElm = Navigation.load('https://elm-lang.org')
+ *
+ * // Force reload of the current page from the server. A thunk, because reading
+ * // `window` only makes sense once there is a browser.
+ * const reloadFromServer = () => Navigation.load(window.location.href)
  * ```
  *
  * @since 0.5.0
@@ -375,10 +398,13 @@ export const reload: Cmd<never> = Stream.execute(
  *
  * @example
  * ```ts
- * type Msg = { type: 'UrlChanged'; location: Navigation.Location }
+ * import * as Navigation from 'tea-effect/Navigation'
+ * import * as Sub from 'tea-effect/Sub'
+ *
+ * type Msg = { readonly type: 'UrlChanged'; readonly location: Navigation.Location }
  *
  * const subscriptions = (): Sub.Sub<Msg> =>
- *   Navigation.urlChanges((location) => ({
+ *   Navigation.urlChanges((location): Msg => ({
  *     type: 'UrlChanged',
  *     location
  *   }))
@@ -425,20 +451,44 @@ export const urlChanges = <Msg>(toMsg: (location: Location) => Msg): Sub<Msg> =>
  *
  * @example
  * ```ts
- * type Msg =
- *   | { type: 'LinkClicked'; request: Navigation.UrlRequest }
- *   | { type: 'UrlChanged'; location: Navigation.Location }
+ * import * as Cmd from 'tea-effect/Cmd'
+ * import * as Navigation from 'tea-effect/Navigation'
+ * import * as Sub from 'tea-effect/Sub'
  *
- * const update = (msg: Msg, model: Model): [Model, Cmd.Cmd<Msg>] => {
+ * type Route = 'home' | 'users' | 'not-found'
+ *
+ * type Model = {
+ *   readonly route: Route
+ *   readonly hasUnsavedChanges: boolean
+ *   readonly showConfirmDialog: boolean
+ * }
+ *
+ * type Msg =
+ *   | { readonly type: 'LinkClicked'; readonly request: Navigation.UrlRequest }
+ *   | { readonly type: 'UrlChanged'; readonly location: Navigation.Location }
+ *
+ * const parseRoute = (location: Navigation.Location): Route => {
+ *   switch (location.pathname) {
+ *     case '/': return 'home'
+ *     case '/users': return 'users'
+ *     default: return 'not-found'
+ *   }
+ * }
+ *
+ * const update = (msg: Msg, model: Model): readonly [Model, Cmd.Cmd<Msg>] => {
  *   switch (msg.type) {
  *     case 'LinkClicked':
  *       switch (msg.request._tag) {
- *         case 'Internal':
- *           // Check for unsaved changes before navigating
+ *         case 'Internal': {
+ *           // Intercepting the click is what makes this possible: the browser
+ *           // has not navigated yet, so you can still refuse.
  *           if (model.hasUnsavedChanges) {
  *             return [{ ...model, showConfirmDialog: true }, Cmd.none]
  *           }
- *           return [model, Navigation.pushUrl(msg.request.location.pathname)]
+ *           // pathname alone would drop the query and hash.
+ *           const { pathname, search, hash } = msg.request.location
+ *           return [model, Navigation.pushUrl(`${pathname}${search}${hash}`)]
+ *         }
  *         case 'External':
  *           return [model, Navigation.load(msg.request.href)]
  *       }
@@ -449,8 +499,8 @@ export const urlChanges = <Msg>(toMsg: (location: Location) => Msg): Sub<Msg> =>
  *
  * const subscriptions = (): Sub.Sub<Msg> =>
  *   Sub.batch([
- *     Navigation.linkClicks((request) => ({ type: 'LinkClicked', request })),
- *     Navigation.urlChanges((location) => ({ type: 'UrlChanged', location }))
+ *     Navigation.linkClicks((request): Msg => ({ type: 'LinkClicked', request })),
+ *     Navigation.urlChanges((location): Msg => ({ type: 'UrlChanged', location }))
  *   ])
  * ```
  *
@@ -592,18 +642,21 @@ export interface ProgramConfig<Model, Msg, Dom, E = never, R = never> {
  *
  * @example
  * ```ts
- * import * as Navigation from 'tea-effect/Navigation'
- * import * as TeaReact from 'tea-effect/React'
+ * import { Effect } from 'effect'
+ * import * as React from 'react'
+ * import { createRoot } from 'react-dom/client'
  * import * as Cmd from 'tea-effect/Cmd'
+ * import * as Navigation from 'tea-effect/Navigation'
  * import * as Sub from 'tea-effect/Sub'
+ * import * as TeaReact from 'tea-effect/React'
  *
  * type Route = 'home' | 'about' | 'contact' | 'not-found'
  *
- * type Model = { route: Route }
+ * type Model = { readonly route: Route }
  *
  * type Msg =
- *   | { type: 'LinkClicked'; request: Navigation.UrlRequest }
- *   | { type: 'UrlChanged'; location: Navigation.Location }
+ *   | { readonly type: 'LinkClicked'; readonly request: Navigation.UrlRequest }
+ *   | { readonly type: 'UrlChanged'; readonly location: Navigation.Location }
  *
  * const parseRoute = (location: Navigation.Location): Route => {
  *   switch (location.pathname) {
@@ -614,12 +667,15 @@ export interface ProgramConfig<Model, Msg, Dom, E = never, R = never> {
  *   }
  * }
  *
- * const update = (msg: Msg, model: Model): [Model, Cmd.Cmd<Msg>] => {
+ * const update = (msg: Msg, model: Model): readonly [Model, Cmd.Cmd<Msg>] => {
  *   switch (msg.type) {
  *     case 'LinkClicked':
  *       switch (msg.request._tag) {
- *         case 'Internal':
- *           return [model, Navigation.pushUrl(msg.request.location.pathname)]
+ *         case 'Internal': {
+ *           // pathname alone would drop the query and hash.
+ *           const { pathname, search, hash } = msg.request.location
+ *           return [model, Navigation.pushUrl(`${pathname}${search}${hash}`)]
+ *         }
  *         case 'External':
  *           return [model, Navigation.load(msg.request.href)]
  *       }
@@ -628,17 +684,23 @@ export interface ProgramConfig<Model, Msg, Dom, E = never, R = never> {
  *   }
  * }
  *
+ * const view = (model: Model): TeaReact.Html<Msg> => () =>
+ *   React.createElement('h1', null, model.route)
+ *
  * const App = Navigation.program({
  *   init: (location) => [{ route: parseRoute(location) }, Cmd.none],
  *   update,
  *   view,
  *   subscriptions: () => Sub.none,
- *   onUrlRequest: (request) => ({ type: 'LinkClicked', request }),
- *   onUrlChange: (location) => ({ type: 'UrlChanged', location }),
+ *   onUrlRequest: (request): Msg => ({ type: 'LinkClicked', request }),
+ *   onUrlChange: (location): Msg => ({ type: 'UrlChanged', location })
  * })
  *
- * // Run with React
- * TeaReact.run(App, (element) => root.render(element))
+ * // Run with React. `run` returns an Effect, so nothing starts until it is executed.
+ * const main = () => {
+ *   const root = createRoot(document.getElementById('app')!)
+ *   return Effect.runPromise(TeaReact.run(App, (element) => root.render(element)))
+ * }
  * ```
  *
  * @since 0.5.0
