@@ -35,3 +35,38 @@ jobs:
       - name: Build
         run: npm run build
 
+  docs:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js 22.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Type-checks docs/examples against src/. The guides import their runnable
+      # snippets from those files with `<<<`, which is what stops those from
+      # drifting. Not covered: the deliberately-fragmentary "wrong / right"
+      # snippets in the Gotchas page and a handful of illustrative fences
+      # elsewhere, which are written inline on purpose.
+      - name: Type check documentation examples
+        run: npm run docs:typecheck
+
+      # docgen compiles AND executes every @example block attached to a module,
+      # constant, function, interface, type alias or class method. A JSDoc example
+      # that does not run fails here. Two caveats: examples on a class declaration
+      # itself are NOT extracted (put them on a method), and docgen rewrites
+      # `tea-effect/X` to the local source, so this checks against src/ rather
+      # than through the package's `exports` map.
+      - name: Type check and run JSDoc examples
+        run: npm run docs:api
+
+      - name: Build documentation site
+        run: npm run docs:build
+

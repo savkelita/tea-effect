@@ -4,6 +4,10 @@ node_modules/
 # Build output
 dist/
 
+# Documentation site
+docs/.vitepress/dist/
+docs/.vitepress/cache/
+
 # IDE
 .idea/
 .vscode/
@@ -28,3 +32,4 @@ coverage/
 
 # TypeScript cache
 *.tsbuildinfo
+docs-api/

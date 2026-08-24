@@ -1,0 +1,19 @@
+{
+  "$schema": "./node_modules/@effect/docgen/schema.json",
+  "projectHomepage": "https://github.com/savkelita/tea-effect",
+  "srcDir": "src",
+  "outDir": "docs-api",
+  "enforceVersion": true,
+  "examplesCompilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM"],
+    "strict": true,
+    "exactOptionalPropertyTypes": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "jsx": "react-jsx",
+    "noEmit": true
+  }
+}

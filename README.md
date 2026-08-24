@@ -4,6 +4,8 @@ The Elm Architecture for TypeScript with [Effect](https://effect.website/).
 
 A spiritual successor to [elm-ts](https://github.com/gcanti/elm-ts), replacing fp-ts/RxJS with the Effect ecosystem.
 
+**[Documentation](https://savkelita.github.io/tea-effect/)** - guides, the mental model, and the gotchas worth knowing before you hit them.
+
 ## Why tea-effect?
 
 - **Type-safe side effects** - Commands and subscriptions with full type inference
@@ -15,17 +17,22 @@ A spiritual successor to [elm-ts](https://github.com/gcanti/elm-ts), replacing f
 ## Installation
 
 ```sh
-npm install tea-effect effect @effect/platform
-# or
-yarn add tea-effect effect @effect/platform
+npm install tea-effect effect
 ```
 
-Note: `effect` and `@effect/platform` are peer dependencies
+`effect` is a peer dependency. Two more are declared optional, because only one module each depends on them:
+
+```sh
+npm install @effect/platform   # tea-effect/Http needs this
+npm install react react-dom    # tea-effect/React needs these
+```
+
+Note that the root entry re-exports every module, `Http` included, so `import { Cmd } from "tea-effect"` pulls `@effect/platform` in anyway. Import the subpath - `tea-effect/Cmd` - to keep it out.
 
 ## Differences from elm-ts
 
 - `Effect` instead of `fp-ts` + `RxJS`
-- `@effect/schema` instead of `io-ts` for runtime validation
+- `Schema` (from `effect`) instead of `io-ts` for runtime validation
 - Http module with Elm-style API
 
 ## React
@@ -241,7 +248,7 @@ export const view =
 | Streaming            | RxJS Observable | Effect Stream     |
 | Error handling       | `Either<E, A>`  | `Effect<A, E, R>` |
 | Dependency injection | Reader pattern  | Built-in `R` type |
-| Runtime validation   | io-ts           | @effect/schema    |
+| Runtime validation   | io-ts           | `Schema`          |
 | Resource management  | Manual          | Scope (automatic) |
 
 ## Module Structure
@@ -268,11 +275,18 @@ export const view =
 ```json
 {
   "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM"],
     "strict": true,
-    "exactOptionalPropertyTypes": true
+    "exactOptionalPropertyTypes": true,
+    "jsx": "react-jsx"
   }
 }
 ```
+
+`moduleResolution` has to be `bundler`, `node16` or `nodenext` - the `node10` default ignores the package's `exports` map, and the `tea-effect/X` subpath imports above will not resolve. `jsx` is only needed if you write views in JSX.
 
 ## Examples
 

@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "rootDir": "../..",
+    "baseUrl": ".",
+    "paths": {
+      "tea-effect": ["../../src/index.ts"],
+      "tea-effect/*": ["../../src/*.ts"]
+    }
+  },
+  "include": ["**/*.ts", "**/*.tsx"]
+}

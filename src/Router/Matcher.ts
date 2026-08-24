@@ -18,14 +18,16 @@ import * as Formatter from './Formatter'
  *
  * @example
  * ```ts
- * const userMatcher = seq(lit('users'), int('id'))
+ * import { Matcher, Route } from 'tea-effect/Router'
+ *
+ * const userMatcher = Matcher.seq(Matcher.lit('users'), Matcher.int('id'))
  *
  * // Parse
- * userMatcher.parser.parse(Route.parse('/users/42', ''))
+ * const parsed = userMatcher.parser.parse(Route.parse('/users/42', ''))
  * // → Some([{ id: 42 }, Route])
  *
  * // Format
- * userMatcher.formatter.format({ id: 42 }).toString()
+ * const url = userMatcher.formatter.format({ id: 42 }).toString()
  * // → '/users/42'
  * ```
  *
@@ -64,7 +66,9 @@ export const make = <A>(
  *
  * @example
  * ```ts
- * const matcher = lit('users')
+ * import { Matcher } from 'tea-effect/Router'
+ *
+ * const matcher = Matcher.lit('users')
  * // Parses: /users/... → {}
  * // Formats: {} → /users
  * ```
@@ -84,7 +88,9 @@ export const lit = (segment: string): Matcher<{}> => ({
  *
  * @example
  * ```ts
- * const matcher = str('name')
+ * import { Matcher } from 'tea-effect/Router'
+ *
+ * const matcher = Matcher.str('name')
  * // Parses: /john → { name: 'john' }
  * // Formats: { name: 'john' } → /john
  * ```
@@ -102,7 +108,9 @@ export const str = <K extends string>(key: K): Matcher<{ readonly [P in K]: stri
  *
  * @example
  * ```ts
- * const matcher = int('id')
+ * import { Matcher } from 'tea-effect/Router'
+ *
+ * const matcher = Matcher.int('id')
  * // Parses: /42 → { id: 42 }
  * // Formats: { id: 42 } → /42
  * ```
@@ -118,9 +126,18 @@ export const int = <K extends string>(key: K): Matcher<{ readonly [P in K]: numb
 /**
  * Match and capture a path segment with Schema validation.
  *
+ * The third argument says how to write the value back into a path segment when
+ * formatting. It defaults to `String`, so a string-valued schema needs only two.
+ *
  * @example
  * ```ts
- * const matcher = param('id', Schema.UUID, (uuid) => uuid)
+ * import { Schema } from 'effect'
+ * import { Matcher } from 'tea-effect/Router'
+ *
+ * const id = Matcher.param('id', Schema.UUID)
+ *
+ * // Supply `encode` when `String(value)` is not the segment you want.
+ * const day = Matcher.param('day', Schema.Date, (d) => d.toISOString().slice(0, 10))
  * ```
  *
  * @since 0.6.0
@@ -140,7 +157,10 @@ export const param = <K extends string, A>(
  *
  * @example
  * ```ts
- * const matcher = query(Schema.Struct({
+ * import { Schema } from 'effect'
+ * import { Matcher } from 'tea-effect/Router'
+ *
+ * const matcher = Matcher.query(Schema.Struct({
  *   q: Schema.String,
  *   page: Schema.optional(Schema.NumberFromString)
  * }))
@@ -186,7 +206,9 @@ export const root: Matcher<{}> = end
  *
  * @example
  * ```ts
- * const matcher = seq(lit('users'), int('id'))
+ * import { Matcher } from 'tea-effect/Router'
+ *
+ * const matcher = Matcher.seq(Matcher.lit('users'), Matcher.int('id'))
  * // Parses: /users/42 → { id: 42 }
  * // Formats: { id: 42 } → /users/42
  * ```
@@ -220,8 +242,11 @@ export const pipe = <T extends Matcher<Record<string, unknown>>[]>(
  *
  * @example
  * ```ts
- * const matcher = imap(
- *   int('id'),
+ * import { Matcher } from 'tea-effect/Router'
+ *
+ * // Rename the captured key: the URL still says :id, the value says userId.
+ * const matcher = Matcher.imap(
+ *   Matcher.int('id'),
  *   ({ id }) => ({ userId: id }),
  *   ({ userId }) => ({ id: userId })
  * )

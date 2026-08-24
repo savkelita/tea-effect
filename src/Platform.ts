@@ -79,18 +79,26 @@ export interface Program<Model, Msg, E = never, R = never> {
  *
  * @example
  * ```ts
- * const myProgram = program(
- *   [{ count: 0 }, Cmd.none],
- *   (msg, model) => {
- *     switch (msg.type) {
- *       case 'Increment':
- *         return [{ count: model.count + 1 }, Cmd.none]
- *       case 'Decrement':
- *         return [{ count: model.count - 1 }, Cmd.none]
- *     }
- *   },
- *   () => Sub.none
- * )
+ * import * as Cmd from 'tea-effect/Cmd'
+ * import * as Platform from 'tea-effect/Platform'
+ * import * as Sub from 'tea-effect/Sub'
+ *
+ * type Model = { readonly count: number }
+ * type Msg = { readonly type: 'Increment' } | { readonly type: 'Decrement' }
+ *
+ * const init: readonly [Model, Cmd.Cmd<Msg>] = [{ count: 0 }, Cmd.none]
+ *
+ * const update = (msg: Msg, model: Model): readonly [Model, Cmd.Cmd<Msg>] => {
+ *   switch (msg.type) {
+ *     case 'Increment':
+ *       return [{ count: model.count + 1 }, Cmd.none]
+ *     case 'Decrement':
+ *       return [{ count: model.count - 1 }, Cmd.none]
+ *   }
+ * }
+ *
+ * // No view here: Platform is the headless runtime. Use Html/React for rendering.
+ * const myProgram = Platform.program(init, update, () => Sub.none)
  * ```
  *
  * @since 0.1.0

@@ -83,7 +83,8 @@ const fetchUsersCmd: Cmd.Cmd<Msg> = pipe(
   })
 )
 
-// Delete user command (simulated)
+// Delete, then refetch. jsonplaceholder answers 200 but does not persist the
+// change, so the refetched list still contains the user.
 const deleteUserCmd = (id: number): Cmd.Cmd<Msg> =>
   pipe(
     Effect.tryPromise({

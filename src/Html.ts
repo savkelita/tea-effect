@@ -61,20 +61,28 @@ export interface Program<Model, Msg, Dom, E = never, R = never> extends Platform
  *
  * @example
  * ```ts
- * const myProgram = Html.program(
- *   [{ count: 0 }, Cmd.none],
- *   (msg, model) => {
- *     switch (msg.type) {
- *       case 'Increment':
- *         return [{ count: model.count + 1 }, Cmd.none]
- *     }
- *   },
- *   (model) => (dispatch) => (
- *     <button onClick={() => dispatch({ type: 'Increment' })}>
- *       Count: {model.count}
- *     </button>
- *   )
- * )
+ * import * as Cmd from 'tea-effect/Cmd'
+ * import * as Html from 'tea-effect/Html'
+ *
+ * type Model = { readonly count: number }
+ * type Msg = { readonly type: 'Increment' } | { readonly type: 'Decrement' }
+ *
+ * const init: readonly [Model, Cmd.Cmd<Msg>] = [{ count: 0 }, Cmd.none]
+ *
+ * const update = (msg: Msg, model: Model): readonly [Model, Cmd.Cmd<Msg>] => {
+ *   switch (msg.type) {
+ *     case 'Increment':
+ *       return [{ count: model.count + 1 }, Cmd.none]
+ *     case 'Decrement':
+ *       return [{ count: model.count - 1 }, Cmd.none]
+ *   }
+ * }
+ *
+ * // Html is renderer-agnostic: `Dom` is whatever your renderer produces. A string
+ * // is enough to show the shape; tea-effect/React fills it in with ReactElement.
+ * const view = (model: Model): Html.Html<string, Msg> => () => `count: ${model.count}`
+ *
+ * const myProgram = Html.program(init, update, view)
  * ```
  *
  * @since 0.1.0

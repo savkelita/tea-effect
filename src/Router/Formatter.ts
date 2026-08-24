@@ -39,8 +39,10 @@ export const empty: Formatter<{}> = {
  *
  * @example
  * ```ts
- * const formatter = lit('users')
- * formatter.format({}) // → Route(['users'], {})
+ * import { Formatter } from 'tea-effect/Router'
+ *
+ * const formatter = Formatter.lit('users')
+ * const route = formatter.format({}) // → Route(['users'], {})
  * ```
  *
  * @since 0.6.0
@@ -55,8 +57,10 @@ export const lit = (segment: string): Formatter<{}> => ({
  *
  * @example
  * ```ts
- * const formatter = str('name')
- * formatter.format({ name: 'john' }) // → Route(['john'], {})
+ * import { Formatter } from 'tea-effect/Router'
+ *
+ * const formatter = Formatter.str('name')
+ * const route = formatter.format({ name: 'john' }) // → Route(['john'], {})
  * ```
  *
  * @since 0.6.0
@@ -71,8 +75,10 @@ export const str = <K extends string>(key: K): Formatter<{ readonly [P in K]: st
  *
  * @example
  * ```ts
- * const formatter = int('id')
- * formatter.format({ id: 42 }) // → Route(['42'], {})
+ * import { Formatter } from 'tea-effect/Router'
+ *
+ * const formatter = Formatter.int('id')
+ * const route = formatter.format({ id: 42 }) // → Route(['42'], {})
  * ```
  *
  * @since 0.6.0
@@ -103,8 +109,10 @@ export const param = <K extends string, A>(
  *
  * @example
  * ```ts
- * const formatter = query<{ q: string; page?: number }>()
- * formatter.format({ q: 'hello', page: 2 }) // → Route([], { q: 'hello', page: '2' })
+ * import { Formatter } from 'tea-effect/Router'
+ *
+ * const formatter = Formatter.query<{ q: string; page?: number }>()
+ * const route = formatter.format({ q: 'hello', page: 2 }) // → Route([], { q: 'hello', page: '2' })
  * ```
  *
  * @since 0.6.0
@@ -164,8 +172,10 @@ export const end: Formatter<{}> = empty
  *
  * @example
  * ```ts
- * const formatter = combine(lit('users'), int('id'))
- * formatter.format({ id: 42 }) // → Route(['users', '42'], {})
+ * import { Formatter } from 'tea-effect/Router'
+ *
+ * const formatter = Formatter.combine(Formatter.lit('users'), Formatter.int('id'))
+ * const route = formatter.format({ id: 42 }) // → Route(['users', '42'], {})
  * ```
  *
  * @since 0.6.0
