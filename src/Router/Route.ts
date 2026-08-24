@@ -9,17 +9,12 @@ import type { Location } from '../Navigation'
 /**
  * Represents a parsed URL with path segments and query parameters.
  *
- * @example
- * ```ts
- * // For URL: /users/42?sort=name
- * const route = Route.parse('/users/42', '?sort=name')
- * // route.segments = ['users', '42']
- * // route.query = URLSearchParams { 'sort' => 'name' }
- * ```
- *
  * @since 0.6.0
  * @category Model
  */
+// The example lives on `parse` below, not here: docgen extracts examples from a
+// class's methods but not from the class declaration, so one written here would
+// be published on the API page without ever being compiled.
 export class Route {
   constructor(
     readonly segments: ReadonlyArray<string>,
@@ -28,6 +23,17 @@ export class Route {
 
   /**
    * Parse a pathname and search string into a Route.
+   *
+   * @example
+   * ```ts
+   * import * as Router from 'tea-effect/Router'
+   *
+   * // For URL: /users/42?sort=name
+   * const route = Router.Route.parse('/users/42', '?sort=name')
+   *
+   * const segments = route.segments // ['users', '42']
+   * const sort = route.query.get('sort') // 'name'
+   * ```
    *
    * @since 0.6.0
    */

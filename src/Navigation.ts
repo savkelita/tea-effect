@@ -350,9 +350,10 @@ export const forward = <Msg = never>(steps: number): Cmd<Msg> =>
  * // Full page load of an external site - this leaves your program
  * const toElm = Navigation.load('https://elm-lang.org')
  *
- * // Force reload of the current page from the server. A thunk, because reading
- * // `window` only makes sense once there is a browser.
- * const reloadFromServer = () => Navigation.load(window.location.href)
+ * // To reload the current page, reach for `reload` instead: `load` with the
+ * // current URL is an ordinary navigation, and with a hash it does not reload
+ * // at all. `reload` guards `window` itself, so it needs no thunk.
+ * const again = Navigation.reload
  * ```
  *
  * @since 0.5.0

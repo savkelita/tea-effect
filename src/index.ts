@@ -1,18 +1,16 @@
 /**
  * tea-effect - The Elm Architecture for TypeScript with Effect
  *
- * This entry re-exports every module. Note that it therefore pulls in `Http`,
+ * This entry re-exports every module, beginning with `Cmd` below: descriptions
+ * of side effects that produce messages. Note that it therefore pulls in `Http`,
  * which imports `@effect/platform`. Import the subpath instead - `tea-effect/Cmd`,
  * `tea-effect/Sub`, and so on - to keep that dependency out of your graph.
  *
  * @since 0.1.0
  */
-
-/**
- * Commands: descriptions of side effects that produce messages.
- *
- * @since 0.1.0
- */
+// The overview and `Cmd`'s description share one block on purpose: docgen attaches
+// a file's leading comment to the first declaration in it, so a second JSDoc here
+// would be silently dropped and `Cmd` would render with the overview text.
 export * as Cmd from "./Cmd";
 
 /**

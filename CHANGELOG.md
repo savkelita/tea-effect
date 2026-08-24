@@ -14,10 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Task: the `perform` and `attempt` examples called both functions with two arguments; both are curried
 - Http: `UsersSchema` and `UserSchema` appeared in six examples without ever being defined, and two type comments named `Users[]`, which the library never produces
 - LocalStorage: the `onChange` example took a `model` parameter, contradicting the keep-alive note directly above it - the handlers are captured once, so reading the model there freezes it at the first render
+- Navigation: the `load` example presented `load(window.location.href)` as a forced reload from the server. It is an ordinary navigation, and with a hash in the URL it does not reload at all; the example now points at `reload`, which is the primitive for that
+- Router: the `Route` example moved from the class declaration onto `Route.parse`. docgen extracts examples from a class's methods but not from the class itself, so that one was published on the API page without ever being compiled - and it would not have compiled, having no import
+- index: the `Cmd` re-export's own description was never rendered. docgen attaches a file's leading comment to the first declaration in it, so the module overview took its place; the two are now one block
 
 ### Added
-- Documentation site built with VitePress: Why, Getting started, The mental model, HTTP, Routing, Dependency injection, Composition, Testing and Gotchas. No code block is written inline; each is imported from a file under `docs/examples` that CI typechecks against `src`, so a signature change breaks the docs build
-- `docs:api` runs `@effect/docgen`, which typechecks **and executes** all 60 `@example` blocks against the package's own entry points. Every example now carries its own imports and compiles standalone; 56 of the 60 failed the first time this ran
+- Documentation site built with VitePress: Why, Getting started, The mental model, HTTP, Routing, Dependency injection, Composition, Testing and Gotchas. Every runnable snippet is imported from a file under `docs/examples` that CI typechecks against `src`, so a signature change breaks the docs build. The "wrong / right" fragments in Gotchas and a few illustrative fences elsewhere are written inline on purpose and are not covered
+- `docs:api` runs `@effect/docgen`, which typechecks **and executes** every `@example` block against `src`. Every example now carries its own imports and compiles standalone; 56 of the first 60 failed the first time this ran
 - The Testing guide's examples are a real Vitest file run by `npm test`, so its claim that `dispatch` applies `update` before returning is a test rather than a statement
 - index: every module re-export is documented, and the entry records that importing the root pulls in `@effect/platform` through `Http` - only `tea-effect/Http` needs it, every other subpath builds without it
 - package.json: `homepage` and `bugs`
