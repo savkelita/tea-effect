@@ -170,16 +170,26 @@ reconciler would write the stale value back - moving the caret and clearing the
 field's native undo history.
 
 **Messages from commands and subscriptions are serialized.** They arrive on
-fibers, so they pass through an internal queue first. The queue's job is to
-guarantee they are applied one at a time and never interleave. It does not delay
-them: as each message is taken off the queue it goes through the same
-synchronous path a `dispatch` from the view takes.
+fibers, so they pass through an internal queue first, and the queue guarantees
+they are applied one at a time and never interleave. It is not a batching or
+debouncing layer, but it *is* a fiber hop: a command's message is applied on a
+later turn of the scheduler, not inside the `dispatch` that returned the
+command. Once taken off the queue it goes through the same synchronous path a
+`dispatch` from the view takes.
 
 **Two ways to observe the model.** `Program.subscribe(listener)` is the
-synchronous path described above, and it is what rendering uses.
-`Program.model$` is an Effect `Stream` carrying the same values, consumed on a
-fiber, so it lands a tick later. Use `model$` for logging, devtools, or anything
-that composes with other streams; use `subscribe` for rendering.
+synchronous path described above, and it is what `React.run` and
+`Html.runWith` render through. `Program.model$` is an Effect `Stream` carrying
+the same values, consumed on a fiber, so it lands a tick later. Use `model$` for
+logging, devtools, or anything that composes with other streams; use `subscribe`
+for rendering.
+
+::: warning `makeUseProgram` is still on the delayed path
+The React hook pushes the model into React state from `model$`, not from
+`subscribe`, so a re-render driven by the hook lands a tick after `dispatch`
+returns. For controlled text inputs that is exactly the delay described above -
+mount through `React.run` until the hook moves over.
+:::
 
 ## Where errors go
 

@@ -34,8 +34,10 @@ export const update = (msg: Msg, model: Model): readonly [Model, Cmd.Cmd<Msg>] =
 const Tick: Msg = { type: 'Tick' }
 
 // Declarative: describe which sources should be live for THIS model, and the
-// runtime works out the difference. Flipping `running` back and forth does not
-// restart a timer that was already running - only the delta is started/stopped.
+// runtime works out the difference. A `Tick` changing `seconds` re-runs this
+// function, but the interval's key is unchanged, so the same timer keeps
+// running - it is not reset. Flipping `running` IS the delta: off interrupts
+// the interval, on starts a fresh one.
 export const subscriptions = (model: Model): Sub.Sub<Msg> =>
   model.running ? Sub.interval(1000, Tick) : Sub.none
 // #endregion subscriptions

@@ -14,7 +14,7 @@ export type Msg =
 
 // #region task
 // A message constructor. Keep it at module level: a stable reference is what lets
-// `Cmd.map` / `Html.map` cache their work further down the tree.
+// `Html.map` cache the mapped dispatch, so memoised children below can bail out.
 const Rolled = (face: number): Msg => ({ type: 'Rolled', face })
 
 // A description of a side effect. Nothing has happened yet - this is just a value.

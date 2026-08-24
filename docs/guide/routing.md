@@ -49,9 +49,14 @@ The same definition that parses also formats:
 
 <<< @/examples/routing/routes.ts#format
 
-This is the payoff of bidirectional routing. A link built with `format` cannot
-point at a URL your parser would reject, because both come from one definition.
-Change `/users/:id` to `/people/:id` and every link changes with it.
+This is the payoff of bidirectional routing: the *shape* of a link cannot drift
+from the parser, because both come from one definition. Change `/users/:id` to
+`/people/:id` and every link changes with it.
+
+The value still has to satisfy the param schema, though. `format` is total - when
+the encoder rejects a value it falls back to `String(value)` - so `userUrl(3.14)`
+type-checks, produces `/users/3.14`, and `parse` then refuses it. If you need the
+round trip guaranteed, keep the validated value at the call site.
 
 ::: details The complete file, imports included
 <<< @/examples/routing/routes.ts

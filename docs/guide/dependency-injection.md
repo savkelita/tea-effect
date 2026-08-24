@@ -10,8 +10,8 @@ its type, and the program does not compile until something provides one.
 
 ## Declaring a service
 
-A service is a tag plus the shape behind it. Nothing here says how it is
-implemented:
+A service is a tag plus the shape behind it. Nothing here says *how* the data is
+fetched - only what a feature is allowed to ask for:
 
 <<< @/examples/di/ApiClient.ts#service
 
@@ -20,8 +20,11 @@ implemented:
 <<< @/examples/di/ApiClient.ts#live
 
 That is the real JSONPlaceholder request from the [HTTP guide](/guide/http),
-moved behind the service. The feature that uses `ApiClient` no longer knows that
-HTTP is involved at all.
+moved behind the service. The feature no longer knows *which* request is made or
+how the client is built - though here it still speaks the transport's error
+type, because the tag's error channel is `Http.HttpError`. Give the service an
+error type of its own, and map `HttpError` into it inside `ApiClientLive`, if you
+want the feature independent of the transport as well.
 
 ## Asking for it
 

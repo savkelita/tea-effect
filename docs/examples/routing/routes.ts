@@ -25,8 +25,9 @@ export const toPage = (location: Navigation.Location): Page =>
 // #endregion page
 
 // #region format
-// The same definition that parses also formats. A link built this way cannot
-// drift away from the route it points at - both come from one source.
+// The same definition that parses also formats, so the shape of a link cannot
+// drift away from the route it points at - both come from one source. The value
+// still has to satisfy the param schema; see the guide.
 export const userUrl = (id: number): string => Router.format(routes.user, { id })
 
 export const searchUrl = (q: string): string => Router.format(routes.search, { q })

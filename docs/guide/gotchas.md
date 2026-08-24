@@ -162,6 +162,11 @@ Use `subscribe` for rendering; use `model$` for logging, devtools, or anything
 that composes with other streams. Rendering from `model$` reintroduces the
 one-tick delay that breaks controlled inputs.
 
+`React.run` renders through `subscribe` and is synchronous. `makeUseProgram`
+does not: it sets React state from `model$`, so the hook's re-render is a tick
+behind. A feature mounted through the hook that owns controlled text inputs
+should mount through `React.run` instead.
+
 ## Next
 
 - [Testing](/guide/testing) - several of these are things a test would have

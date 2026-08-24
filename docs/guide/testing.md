@@ -74,6 +74,8 @@ dependency, and `update` is a plain function:
 
 ```ts
 // vitest.config.ts
+import { defineConfig } from 'vitest/config'
+
 export default defineConfig({
   test: {
     environment: 'node'

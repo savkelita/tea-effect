@@ -14,8 +14,9 @@ export type Msg =
 
 // #region tagger
 // The tagger lives at module level, and that placement is load-bearing.
-// `Cmd.map` and `Html.map` cache their work per `(f, dispatch)` pair; an inline
-// arrow would be a new key on every render and silently defeat the cache.
+// `Html.map` caches the mapped dispatch per `(f, dispatch)` pair; an inline arrow
+// is a new key on every render and silently defeats the cache. (`Cmd.map` has no
+// cache and needs no stable `f` - it only preserves `Cmd.none`.)
 const EmailMsg = (msg: Field.Msg): Msg => ({ type: 'EmailMsg', msg })
 // #endregion tagger
 

@@ -3,9 +3,10 @@
 By the end of this page you will have a working counter and will have seen both
 ways of mounting a tea-effect program into React.
 
-Every code block below is imported from a real file under
+Every TypeScript block below is imported from a real file under
 [`docs/examples/`](https://github.com/savkelita/tea-effect/tree/main/docs/examples)
-that is type-checked in CI. If it appears here, it compiles.
+that is type-checked in CI. The `sh` and `json` blocks are written inline, and
+nothing checks those.
 
 ## Requirements
 
@@ -43,18 +44,27 @@ Every example in this documentation uses the subpath form for that reason.
 
 ## tsconfig
 
-tea-effect leans on precise types, and a few of its guarantees are only real
-under strict settings:
+tea-effect ships as ESM with an `exports` map, and a few of its guarantees are
+only real under strict settings. Both matter here:
 
 ```json
 {
   "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM"],
     "strict": true,
     "exactOptionalPropertyTypes": true,
     "jsx": "react-jsx"
   }
 }
 ```
+
+`moduleResolution` has to be `bundler`, `node16` or `nodenext`. TypeScript's
+default is `node10`, which ignores the package's `exports` map - and then none
+of the `tea-effect/X` subpath imports this documentation is built on will
+resolve.
 
 `jsx` is only needed if you write views in JSX.
 
@@ -86,9 +96,9 @@ Note that it is an ordinary function - no framework, no `this`, nothing async.
 
 <<< @/examples/counter/Counter.tsx#update
 
-Because the `Msg` union is exhaustive and `noFallthroughCasesInSwitch` is on,
-adding a new message and forgetting to handle it is a compile error rather than
-a silent no-op.
+Because `update` declares its return type and the switch has no `default`,
+adding a message to the union and forgetting to handle it makes the function
+fall off the end - a compile error under `strict`, rather than a silent no-op.
 
 ### And a view
 
@@ -146,7 +156,12 @@ dependency injection guide.
 | Lifecycle | You control it | Tied to component mount/unmount |
 | Good for | Whole app | One feature, incremental adoption |
 
-If you are adding tea-effect to an existing codebase, start with Option B.
+If you are adding tea-effect to an existing codebase, start with Option B - with
+one caveat. Option A renders through `Program.subscribe`, inside `dispatch`;
+the hook sets React state from `model$`, which lands a tick later. That delay is
+visible on controlled text inputs, so give a feature that has them Option A
+until the hook moves over. [The mental model](/guide/mental-model) explains why
+the difference matters.
 
 ## Next
 
