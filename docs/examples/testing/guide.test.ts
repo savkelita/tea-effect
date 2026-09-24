@@ -1,4 +1,4 @@
-import { Chunk, Effect, Stream } from 'effect'
+import { Effect, Stream } from 'effect'
 import { describe, expect, it } from 'vitest'
 import * as Platform from 'tea-effect/Platform'
 import * as Counter from '../counter/Counter'
@@ -30,7 +30,7 @@ describe('commands', () => {
     // The model records the roll immediately; the number is not known yet.
     expect(model).toEqual({ face: 1, rolling: true })
 
-    const messages = Chunk.toReadonlyArray(await Effect.runPromise(Stream.runCollect(cmd)))
+    const messages = await Effect.runPromise(Stream.runCollect(cmd))
 
     expect(messages).toHaveLength(1)
     expect(messages[0]).toMatchObject({ type: 'Rolled' })
@@ -44,8 +44,8 @@ describe('a command that requires a service', () => {
     const [, cmd] = Users.update({ type: 'LoadRequested' }, { _tag: 'Idle' })
 
     // `cmd` has ApiClient in its `R`. Providing the test layer discharges it.
-    const messages = Chunk.toReadonlyArray(
-      await Effect.runPromise(Stream.runCollect(cmd).pipe(Effect.provide(ApiClientTest([]))))
+    const messages = await Effect.runPromise(
+      Stream.runCollect(cmd).pipe(Effect.provide(ApiClientTest([])))
     )
 
     expect(messages).toEqual([{ type: 'UsersReceived', users: [] }])

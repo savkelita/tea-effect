@@ -1,9 +1,9 @@
-import { Effect, ManagedRuntime, Runtime } from 'effect'
+import { Effect, ManagedRuntime } from 'effect'
 import * as React from 'react'
 import { createRoot } from 'react-dom/client'
 import * as Sub from 'tea-effect/Sub'
 import * as TeaReact from 'tea-effect/React'
-import { ApiClient, ApiClientLive } from './ApiClient'
+import { ApiClientLive } from './ApiClient'
 import * as Users from './Users'
 
 const view =
@@ -35,13 +35,10 @@ export const main = () => {
 
 // #region hook
 // Inside an existing React tree it is `useProgram` instead, and that wants a
-// Runtime rather than a Layer. Build it once, at module level.
+// ManagedRuntime rather than a Layer. Build it once, at module level. Its layer is
+// built on first use, so an asynchronous layer needs nothing special: messages
+// dispatched before it is ready are kept until the program starts.
 const AppRuntime = ManagedRuntime.make(ApiClientLive)
-
-// ApiClientLive is built synchronously, so the runtime can be too. A layer that
-// opens a connection or reads configuration would need `AppRuntime.runtime()`,
-// which is a Promise.
-const runtime: Runtime.Runtime<ApiClient> = Effect.runSync(AppRuntime)
 
 const useProgram = TeaReact.makeUseProgram(React)
 
@@ -49,7 +46,7 @@ export const UsersFeature = () => {
   // Because `R` is not `never`, TypeScript requires the runtime argument here.
   // Forgetting it is a compile error, not a failure at runtime.
   const { model, dispatch } = useProgram(Users.init, Users.update, () => Sub.none, {
-    runtime
+    runtime: AppRuntime
   })
 
   return model._tag === 'Loaded' ? (

@@ -3,8 +3,9 @@
  *
  * This entry re-exports every module, beginning with `Cmd` below: descriptions
  * of side effects that produce messages. Note that it therefore pulls in `Http`,
- * which imports `@effect/platform`. Import the subpath instead - `tea-effect/Cmd`,
- * `tea-effect/Sub`, and so on - to keep that dependency out of your graph.
+ * which imports `effect/unstable/http` (part of `effect`, nothing extra to install).
+ * Import the subpath instead - `tea-effect/Cmd`, `tea-effect/Sub`, and so on - to
+ * keep that code out of your graph.
  *
  * @since 0.1.0
  */

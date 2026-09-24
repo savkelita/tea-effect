@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { Effect, Option, Schema, Stream, Chunk, Exit, Scope } from 'effect'
+import { Effect, Option, Schema, Stream, Exit, Scope } from 'effect'
 import * as LocalStorage from '../src/LocalStorage'
 import * as Platform from '../src/Platform'
 import * as Cmd from '../src/Cmd'
@@ -32,7 +32,7 @@ const createMockStorage = () => {
 // Helper to run a Cmd and get the single message
 const runCmd = async <Msg>(cmd: Stream.Stream<Msg>): Promise<Msg> => {
   const result = await Effect.runPromise(Stream.runCollect(cmd))
-  const messages = Chunk.toArray(result)
+  const messages = result
   if (messages.length !== 1) {
     throw new Error(`Expected 1 message, got ${messages.length}`)
   }
@@ -198,7 +198,7 @@ describe('LocalStorage', () => {
       const user = { id: '1', name: 'John' }
       const cmd = LocalStorage.setIgnoreErrors('user', UserSchema, user)
       const result = await Effect.runPromise(Stream.runCollect(cmd))
-      const messages = Chunk.toArray(result)
+      const messages = result
 
       expect(messages).toEqual([])
       expect(mockStorage.setItem).toHaveBeenCalledWith('user', JSON.stringify(user))
@@ -226,7 +226,7 @@ describe('LocalStorage', () => {
 
       const cmd = LocalStorage.removeIgnoreErrors('key')
       const result = await Effect.runPromise(Stream.runCollect(cmd))
-      const messages = Chunk.toArray(result)
+      const messages = result
 
       expect(messages).toEqual([])
       expect(mockStorage.removeItem).toHaveBeenCalledWith('key')
@@ -385,12 +385,20 @@ describe('LocalStorage', () => {
     }
     const Counter = Schema.Struct({ n: Schema.Number })
 
-    it('#33: a value that encodes to undefined fails as EncodeError and is not stored', async () => {
+    it('#33: undefined is stored as JSON null and reads back, never as the string "undefined"', async () => {
       const { localStorage } = installWindow()
+      const schema = Schema.UndefinedOr(Schema.String)
       const exit = await Effect.runPromiseExit(
-        LocalStorage.setTask('draft', Schema.UndefinedOr(Schema.String), undefined)
+        Effect.andThen(LocalStorage.setTask('draft', schema, undefined), LocalStorage.getTask('draft', schema))
       )
-      expect(Exit.isFailure(exit)).toBe(true)
+      expect(localStorage.getItem('draft')).toBe('null')
+      expect(Exit.isSuccess(exit) && exit.value).toEqual(Option.some(undefined))
+    })
+
+    it('#33: a value with no JSON form fails as EncodeError and is not stored', async () => {
+      const { localStorage } = installWindow()
+      const exit = await Effect.runPromiseExit(Effect.flip(LocalStorage.setTask('draft', Schema.Unknown, undefined)))
+      expect(Exit.isSuccess(exit) && exit.value._tag).toBe('EncodeError')
       expect(localStorage.getItem('draft')).toBeNull()
     })
 
@@ -458,7 +466,7 @@ describe('LocalStorage', () => {
               [{ n: 0 }, Cmd.none],
               (_msg, m) => [{ n: m.n + 1 }, Cmd.none],
               () => LocalStorage.onChange('c', Counter, { onSuccess: () => ({ type: 'Go' as const }), onError: () => ({ type: 'Go' as const }) })
-            ).pipe(Scope.extend(scope))
+            ).pipe(Scope.provide(scope))
             yield* Effect.forkScoped(Stream.runDrain(prog.model$))
             yield* Effect.sleep('30 millis')
             for (let i = 0; i < 4; i++) {
@@ -472,6 +480,106 @@ describe('LocalStorage', () => {
       // Registered once for the program's whole life; removed once at teardown.
       expect(counts.adds).toBe(1)
       expect(counts.removes).toBe(1)
+    })
+  })
+
+  describe('JSON codec', () => {
+    const WithDate = Schema.Struct({ at: Schema.Date })
+    const WithBigInt = Schema.Struct({ n: Schema.BigInt })
+    const MaybeNumber = Schema.Option(Schema.Number)
+
+    // Failures become their _tag so a regression reports as a plain diff.
+    const orTag = <A>(task: Effect.Effect<A, LocalStorage.LocalStorageError>) =>
+      Effect.catch(task, (error) => Effect.succeed(error._tag))
+
+    const roundTrip = <A, I>(schema: Schema.Codec<A, I>, value: A) =>
+      Effect.runPromise(
+        Effect.gen(function* () {
+          const set = yield* orTag(Effect.as(LocalStorage.setTask('k', schema, value), 'ok'))
+          const stored = mockStorage.getItem('k')
+          const read = yield* orTag(LocalStorage.getTask('k', schema))
+          return { set, stored, read }
+        })
+      )
+
+    it('round-trips Schema.Date as an ISO string', async () => {
+      expect(await roundTrip(WithDate, { at: new Date(0) })).toEqual({
+        set: 'ok',
+        stored: '{"at":"1970-01-01T00:00:00.000Z"}',
+        read: Option.some({ at: new Date(0) })
+      })
+    })
+
+    it('round-trips Schema.BigInt as a string', async () => {
+      expect(await roundTrip(WithBigInt, { n: 12n })).toEqual({
+        set: 'ok',
+        stored: '{"n":"12"}',
+        read: Option.some({ n: 12n })
+      })
+    })
+
+    it('round-trips Schema.Option as a tagged object', async () => {
+      expect(await roundTrip(MaybeNumber, Option.some(1))).toEqual({
+        set: 'ok',
+        stored: '{"_tag":"Some","value":1}',
+        read: Option.some(Option.some(1))
+      })
+      expect(await roundTrip(MaybeNumber, Option.none())).toEqual({
+        set: 'ok',
+        stored: '{"_tag":"None"}',
+        read: Option.some(Option.none())
+      })
+    })
+
+    it('reads values written by tea-effect on Effect 3', async () => {
+      mockStorage._setStore({
+        date: '{"at":"1970-01-01T00:00:00.000Z"}',
+        big: '{"n":"12"}',
+        some: '{"_tag":"Some","value":1}',
+        none: '{"_tag":"None"}'
+      })
+      const read = await Effect.runPromise(
+        Effect.all({
+          date: orTag(LocalStorage.getTask('date', WithDate)),
+          big: orTag(LocalStorage.getTask('big', WithBigInt)),
+          some: orTag(LocalStorage.getTask('some', MaybeNumber)),
+          none: orTag(LocalStorage.getTask('none', MaybeNumber))
+        })
+      )
+      expect(read).toEqual({
+        date: Option.some({ at: new Date(0) }),
+        big: Option.some({ n: 12n }),
+        some: Option.some(Option.some(1)),
+        none: Option.some(Option.none())
+      })
+    })
+
+    it('onChange decodes a Schema.Date payload from another tab', async () => {
+      const listeners: Array<(e: any) => void> = []
+      ;(global as any).window.addEventListener = (_t: string, h: any) => { listeners.push(h) }
+      ;(global as any).window.removeEventListener = () => {}
+      let got: unknown = 'none'
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            yield* Effect.forkScoped(
+              Stream.runForEach(
+                LocalStorage.onChange('k', WithDate, {
+                  onSuccess: (d) => { got = d; return 0 },
+                  onError: (e) => { got = e._tag; return 1 }
+                }),
+                () => Effect.void
+              )
+            )
+            yield* Effect.sleep('20 millis')
+            listeners.forEach((h) =>
+              h({ key: 'k', newValue: '{"at":"1970-01-01T00:00:00.000Z"}', oldValue: null, storageArea: mockStorage })
+            )
+            yield* Effect.sleep('40 millis')
+          })
+        )
+      )
+      expect(got).toEqual(Option.some({ at: new Date(0) }))
     })
   })
 })

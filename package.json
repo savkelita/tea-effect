@@ -14,8 +14,9 @@
   ],
   "author": "Marko Savic",
   "license": "MIT",
+  "type": "module",
   "engines": {
-    "node": ">=18.0.0"
+    "node": "^20.19.0 || >=22.12.0"
   },
   "repository": {
     "type": "git",
@@ -26,63 +27,51 @@
     "url": "https://github.com/savkelita/tea-effect/issues"
   },
   "main": "./dist/index.js",
-  "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.mjs",
-      "require": "./dist/index.js"
+      "default": "./dist/index.js"
     },
     "./Cmd": {
       "types": "./dist/Cmd.d.ts",
-      "import": "./dist/Cmd.mjs",
-      "require": "./dist/Cmd.js"
+      "default": "./dist/Cmd.js"
     },
     "./Sub": {
       "types": "./dist/Sub.d.ts",
-      "import": "./dist/Sub.mjs",
-      "require": "./dist/Sub.js"
+      "default": "./dist/Sub.js"
     },
     "./Task": {
       "types": "./dist/Task.d.ts",
-      "import": "./dist/Task.mjs",
-      "require": "./dist/Task.js"
+      "default": "./dist/Task.js"
     },
     "./Platform": {
       "types": "./dist/Platform.d.ts",
-      "import": "./dist/Platform.mjs",
-      "require": "./dist/Platform.js"
+      "default": "./dist/Platform.js"
     },
     "./Html": {
       "types": "./dist/Html.d.ts",
-      "import": "./dist/Html.mjs",
-      "require": "./dist/Html.js"
+      "default": "./dist/Html.js"
     },
     "./React": {
       "types": "./dist/React.d.ts",
-      "import": "./dist/React.mjs",
-      "require": "./dist/React.js"
+      "default": "./dist/React.js"
     },
     "./Navigation": {
       "types": "./dist/Navigation.d.ts",
-      "import": "./dist/Navigation.mjs",
-      "require": "./dist/Navigation.js"
+      "default": "./dist/Navigation.js"
     },
     "./Http": {
       "types": "./dist/Http.d.ts",
-      "import": "./dist/Http.mjs",
-      "require": "./dist/Http.js"
+      "default": "./dist/Http.js"
     },
     "./LocalStorage": {
       "types": "./dist/LocalStorage.d.ts",
-      "import": "./dist/LocalStorage.mjs",
-      "require": "./dist/LocalStorage.js"
+      "default": "./dist/LocalStorage.js"
     },
     "./Router": {
       "types": "./dist/Router.d.ts",
-      "import": "./dist/Router.mjs",
-      "require": "./dist/Router.js"
+      "default": "./dist/Router.js"
     }
   },
   "files": [
@@ -102,33 +91,28 @@
     "docs:preview": "vitepress preview docs",
     "docs:typecheck": "tsc -p docs/examples/tsconfig.json",
     "docs:api": "npm run build && docgen",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build && npm run smoke:dist",
+    "smoke:dist": "node scripts/smoke-dist.mjs"
   },
   "peerDependencies": {
-    "@effect/platform": "^0.94.0",
-    "effect": "^3.19.15",
+    "effect": "4.0.0-rc.117",
     "react": "^18.0.0 || ^19.0.0"
   },
   "peerDependenciesMeta": {
-    "@effect/platform": {
-      "optional": true
-    },
     "react": {
       "optional": true
     }
   },
   "devDependencies": {
     "@effect/docgen": "^0.5.2",
-    "@effect/platform": "^0.94.0",
-    "@effect/platform-node": "^0.104.0",
     "@types/node": "^22.0.0",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.3.7",
-    "effect": "^3.19.15",
+    "effect": "4.0.0-rc.117",
     "react": "^18.2.0",
     "react-dom": "^18.3.1",
     "tsup": "^8.0.0",
-    "typescript": "^5.3.0",
+    "typescript": "^5.9.0",
     "vitepress": "^1.6.4",
     "vitest": "^1.0.0"
   }

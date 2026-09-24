@@ -137,7 +137,7 @@ export const int = <K extends string>(key: K): Parser<{ readonly [P in K]: numbe
  * import { Schema } from 'effect'
  * import { Parser } from 'tea-effect/Router'
  *
- * const parser = Parser.param('id', Schema.UUID)
+ * const parser = Parser.param('id', Schema.String.check(Schema.isGUID()))
  * // /550e8400-e29b-41d4-a716-446655440000 → { id: UUID }
  * ```
  *
@@ -146,7 +146,7 @@ export const int = <K extends string>(key: K): Parser<{ readonly [P in K]: numbe
  */
 export const param = <K extends string, A>(
   key: K,
-  schema: Schema.Schema<A, string>
+  schema: Schema.Codec<A, string>
 ): Parser<{ readonly [P in K]: A }> => ({
   parse: (route) => {
     const segment = route.segments[0]
@@ -192,7 +192,7 @@ export type QueryRecord = Record<string, string | ReadonlyArray<string> | undefi
  * @category Primitives
  */
 export const query = <A, I>(
-  schema: Schema.Schema<A, I, never>
+  schema: Schema.Codec<A, I>
 ): Parser<A> => ({
   parse: (route) => {
     const queryObj: Record<string, string | string[]> = {}

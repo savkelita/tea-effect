@@ -243,7 +243,7 @@ const notifyUrlChange = (): void => {
  * @category Commands
  */
 export const pushUrl = <Msg = never>(url: string, state: unknown = null): Cmd<Msg> =>
-  Stream.execute(
+  Stream.fromEffectDrain(
     Effect.sync(() => {
       if (typeof window !== 'undefined') {
         window.history.pushState(state, '', url)
@@ -271,7 +271,7 @@ export const pushUrl = <Msg = never>(url: string, state: unknown = null): Cmd<Ms
  * @category Commands
  */
 export const replaceUrl = <Msg = never>(url: string, state: unknown = null): Cmd<Msg> =>
-  Stream.execute(
+  Stream.fromEffectDrain(
     Effect.sync(() => {
       if (typeof window !== 'undefined') {
         window.history.replaceState(state, '', url)
@@ -300,7 +300,7 @@ export const replaceUrl = <Msg = never>(url: string, state: unknown = null): Cmd
  * @category Commands
  */
 export const back = <Msg = never>(steps: number): Cmd<Msg> =>
-  Stream.execute(
+  Stream.fromEffectDrain(
     Effect.sync(() => {
       if (typeof window !== 'undefined') {
         window.history.go(-steps)
@@ -325,7 +325,7 @@ export const back = <Msg = never>(steps: number): Cmd<Msg> =>
  * @category Commands
  */
 export const forward = <Msg = never>(steps: number): Cmd<Msg> =>
-  Stream.execute(
+  Stream.fromEffectDrain(
     Effect.sync(() => {
       if (typeof window !== 'undefined') {
         window.history.go(steps)
@@ -360,7 +360,7 @@ export const forward = <Msg = never>(steps: number): Cmd<Msg> =>
  * @category Commands
  */
 export const load = <Msg = never>(url: string): Cmd<Msg> =>
-  Stream.execute(
+  Stream.fromEffectDrain(
     Effect.sync(() => {
       if (typeof window !== 'undefined') {
         window.location.href = url
@@ -374,7 +374,7 @@ export const load = <Msg = never>(url: string): Cmd<Msg> =>
  * @since 0.5.0
  * @category Commands
  */
-export const reload: Cmd<never> = Stream.execute(
+export const reload: Cmd<never> = Stream.fromEffectDrain(
   Effect.sync(() => {
     if (typeof window !== 'undefined') {
       window.location.reload()

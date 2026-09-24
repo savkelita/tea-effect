@@ -6,7 +6,7 @@
  *
  * @since 0.1.0
  */
-import { Effect, Stream, SubscriptionRef, Queue, Fiber, pipe, Runtime, Scope, Exit, Deferred, Cause } from 'effect'
+import { Effect, Stream, SubscriptionRef, Queue, Fiber, pipe, Scope, Exit, Deferred, Cause, Scheduler } from 'effect'
 import { Cmd } from './Cmd'
 import { Sub, none as subNone, getSubEntries } from './Sub'
 
@@ -48,10 +48,11 @@ export interface Program<Model, Msg, E = never, R = never> {
    * Observes the model SYNCHRONOUSLY: the listener is called with the current model
    * right away, and again inside every `dispatch`, before it returns.
    *
-   * `model$` delivers the same values through a `Stream`, which is consumed on a fiber
-   * and therefore lands a tick later. That is too late for a renderer driving controlled
-   * DOM inputs: the browser would still hold the freshly typed text while the view still
-   * carries the previous model, and the reconciler would write the old value back.
+   * `model$` delivers the same values through a `Stream` consumed on a fiber, so when a
+   * value arrives depends on that fiber: often inside `dispatch`, sometimes later. A
+   * renderer driving controlled DOM inputs needs the guarantee: otherwise the browser
+   * could still hold the freshly typed text while the view carries the previous model,
+   * and the reconciler would write the old value back.
    *
    * Returns a function that stops the observation.
    */
@@ -117,13 +118,12 @@ export const program = <Model, Msg, E = never, R = never>(
     // - changes stream emits current value on subscription + all changes
     const modelRef = yield* SubscriptionRef.make(initialModel)
     const msgQueue = yield* Queue.unbounded<Msg>()
-    const shutdownRef = yield* SubscriptionRef.make(false)
 
     // Failures/defects from forked cmd, subscription and update fibers would
     // otherwise die unobserved; funnel them here so they surface on model$.
     const errSignal = yield* Deferred.make<never, E>()
     const surfaceCause = (cause: Cause.Cause<E>) =>
-      Cause.isInterruptedOnly(cause) ? Effect.void : Deferred.failCause(errSignal, cause)
+      Cause.hasInterruptsOnly(cause) ? Effect.void : Deferred.failCause(errSignal, cause)
 
     // Program-owned scope so shutdown interrupts in-flight cmd fibers and both
     // loops; closing the ambient scope tears it down too.
@@ -134,8 +134,10 @@ export const program = <Model, Msg, E = never, R = never>(
 
     // Runs an effect right here instead of handing it to a fiber, so `update` and the
     // render it triggers finish inside the DOM event that dispatched the message.
-    const runtime = yield* Effect.runtime<R>()
-    const runNow = Runtime.runSync(runtime)
+    const context = yield* Effect.context<R>()
+    const runNow = Effect.runSyncWith(context)
+    // Cmd fibers forked inside runNow would otherwise inherit its microtask-only scheduler.
+    const scheduler = yield* Scheduler.Scheduler
 
     // Process a command - run the stream and dispatch messages as they arrive
     // Commands are forked so they run concurrently (matching Elm's semantics)
@@ -143,7 +145,8 @@ export const program = <Model, Msg, E = never, R = never>(
       pipe(
         cmd,
         Stream.runForEach(msg => Queue.offer(msgQueue, msg)),
-        Effect.catchAllCause(surfaceCause),
+        Effect.catchCause(surfaceCause),
+        Effect.provideService(Scheduler.Scheduler, scheduler),
         Effect.forkIn(progScope),
         Effect.asVoid
       )
@@ -151,29 +154,45 @@ export const program = <Model, Msg, E = never, R = never>(
     const listeners = new Set<(model: Model) => void>()
 
     const subscribe = (listener: (model: Model) => void): (() => void) => {
-      listener(runNow(SubscriptionRef.get(modelRef)))
+      listener(SubscriptionRef.getUnsafe(modelRef))
       listeners.add(listener)
       return () => void listeners.delete(listener)
     }
 
     // The single path every message takes, whether it came from the view, a command or a
     // subscription. Synchronous on purpose - see `subscribe` on the Program interface.
+    const step = (msg: Msg): Effect.Effect<void, never, R> =>
+      pipe(
+        Effect.gen(function* () {
+          const currentModel = yield* SubscriptionRef.get(modelRef)
+          const [newModel, cmd] = update(msg, currentModel)
+          yield* SubscriptionRef.set(modelRef, newModel)
+          yield* Effect.sync(() => {
+            for (const listener of listeners) listener(newModel)
+          })
+          yield* processCmd(cmd)
+        }),
+        Effect.catchCause(surfaceCause)
+      )
+
+    // A dispatch made during a step (a listener, or a model$ consumer resumed inside
+    // SubscriptionRef.set while it holds its permit) runs right after that step.
+    let handling = false
+    const pending: Array<Msg> = []
     const handle = (msg: Msg): void => {
       if (stopped) return
-      runNow(
-        pipe(
-          Effect.gen(function* () {
-            const currentModel = yield* SubscriptionRef.get(modelRef)
-            const [newModel, cmd] = update(msg, currentModel)
-            yield* SubscriptionRef.set(modelRef, newModel)
-            yield* Effect.sync(() => {
-              for (const listener of listeners) listener(newModel)
-            })
-            yield* processCmd(cmd)
-          }),
-          Effect.catchAllCause(surfaceCause)
-        )
-      )
+      if (handling) {
+        pending.push(msg)
+        return
+      }
+      handling = true
+      try {
+        runNow(step(msg))
+        while (pending.length > 0 && !stopped) runNow(step(pending.shift()!))
+      } finally {
+        handling = false
+        pending.length = 0
+      }
     }
 
     const dispatch: Dispatch<Msg> = handle
@@ -186,21 +205,22 @@ export const program = <Model, Msg, E = never, R = never>(
     // message is applied, only that fiber-produced ones do not interleave.
     const updateLoop: Effect.Effect<never, E, R> = Effect.forever(
       Effect.gen(function* () {
-        const isShutdown = yield* SubscriptionRef.get(shutdownRef)
-        if (isShutdown) {
+        if (stopped) {
           return yield* Effect.interrupt
         }
 
         const msg = yield* Queue.take(msgQueue)
         yield* Effect.sync(() => handle(msg))
-      })
+      }),
+      // v4 forever yields to the scheduler (setTimeout(0) in browsers) every iteration.
+      { disableYield: true }
     )
 
     // Subscription management - diff keyed subscriptions on each model change,
     // keeping unchanged subs running and starting/stopping only the delta (Elm
     // semantics). This avoids restarting timers and re-registering DOM listeners
     // on every message, which switch-restart did.
-    const subFibers = new Map<string, { fiber: Fiber.RuntimeFiber<void, never>; count: number }>()
+    const subFibers = new Map<string, { fiber: Fiber.Fiber<void, never>; count: number }>()
     const diffSubs = (model: Model): Effect.Effect<void, never, R> =>
       Effect.gen(function* () {
         // Group by key so several subscriptions sharing a key (e.g. two batched
@@ -226,10 +246,11 @@ export const program = <Model, Msg, E = never, R = never>(
             const merged = streams.length === 1
               ? streams[0]
               : Stream.mergeAll(streams, { concurrency: 'unbounded' })
-            const fiber = yield* Effect.forkIn(progScope)(
+            // Start now, so a source registers inside this diff rather than a macrotask later.
+            const fiber = yield* Effect.forkIn(progScope, { startImmediately: true })(
               pipe(
                 Stream.runForEach(merged, (msg: Msg) => Queue.offer(msgQueue, msg)),
-                Effect.catchAllCause(surfaceCause)
+                Effect.catchCause(surfaceCause)
               )
             )
             subFibers.set(key, { fiber, count: streams.length })
@@ -238,18 +259,20 @@ export const program = <Model, Msg, E = never, R = never>(
       })
 
     const subscriptionLoop: Effect.Effect<void, never, R> = Stream.runForEach(
-      Stream.changes(modelRef.changes),
+      // By reference: v4 Stream.changes uses Equal.equals, which compares plain objects deeply.
+      Stream.changesWith(SubscriptionRef.changes(modelRef), (a, b) => a === b),
       diffSubs
     )
 
     // Start loops in the program scope
-    yield* Effect.forkIn(progScope)(Effect.catchAllCause(updateLoop, surfaceCause))
-    yield* Effect.forkIn(progScope)(Effect.catchAllCause(subscriptionLoop, surfaceCause))
+    yield* Effect.forkIn(progScope)(Effect.catchCause(updateLoop, surfaceCause))
+    // Start now, so subscriptions(init) are registered before the initial cmd runs.
+    yield* Effect.forkIn(progScope, { startImmediately: true })(Effect.catchCause(subscriptionLoop, surfaceCause))
 
     // Model stream: SubscriptionRef.changes merged with the error signal, so a
     // failing cmd/sub/update surfaces on model$ (honoring the declared E).
     const model$: Stream.Stream<Model, E, R> = Stream.merge(
-      modelRef.changes,
+      SubscriptionRef.changes(modelRef),
       Stream.fromEffect(Deferred.await(errSignal))
     ) as Stream.Stream<Model, E, R>
 
@@ -257,7 +280,6 @@ export const program = <Model, Msg, E = never, R = never>(
     // (interrupting both loops and every in-flight cmd fiber).
     const shutdown = Effect.gen(function* () {
       stopped = true
-      yield* SubscriptionRef.set(shutdownRef, true)
       yield* Queue.shutdown(msgQueue)
       yield* Scope.close(progScope, Exit.void)
     })

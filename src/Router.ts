@@ -26,7 +26,7 @@
  *   search: Router.path('/search').query(
  *     Schema.Struct({
  *       q: Schema.String,
- *       page: Schema.optional(Schema.NumberFromString)
+ *       page: Schema.optional(Router.IntFromString)
  *     })
  *   )
  * })
@@ -50,7 +50,7 @@
  * @see {@link https://github.com/gcanti/fp-ts-routing fp-ts-routing}
  */
 
-import { Option, Schema } from 'effect'
+import { Option, Schema, SchemaAST, SchemaTransformation } from 'effect'
 import type { Location } from './Navigation'
 import { Route as RouteClass } from './Router/Route'
 import * as Parser from './Router/Parser'
@@ -98,13 +98,16 @@ export * as Formatter from './Router/Formatter'
 export * as Matcher from './Router/Matcher'
 
 /**
- * A path-param schema for integer ids that rejects 'NaN', 'Infinity' and
- * non-integers, unlike bare `Schema.NumberFromString`.
+ * A path-param schema for integer ids that rejects blank strings, 'abc', 'NaN',
+ * 'Infinity' and non-integers, unlike bare `Schema.NumberFromString`, which in
+ * Effect 4 turns any string into a number ('abc' -> NaN, '' -> 0).
  *
  * @since 0.6.0
  * @category Schemas
  */
-export const IntFromString: Schema.Schema<number, string> = Schema.NumberFromString.pipe(Schema.int())
+export const IntFromString: Schema.Codec<number, string> = Schema.String.check(Schema.isPattern(/\S/)).pipe(
+  Schema.decodeTo(Schema.Int, SchemaTransformation.numberFromString)
+)
 
 // -------------------------------------------------------------------------------------
 // Path Pattern Types
@@ -147,10 +150,10 @@ export type ExtractParams<T extends string> = ExtractParamsRooted<T extends `/${
  */
 export type ParamsFromSchemas<
   Params extends string,
-  Schemas extends Partial<Record<Params, Schema.Schema<any, string>>>
+  Schemas extends Partial<Record<Params, Schema.Codec<any, string>>>
 > = {
   readonly [K in Params]: K extends keyof Schemas
-    ? Schemas[K] extends Schema.Schema<infer A, string>
+    ? Schemas[K] extends Schema.Codec<infer A, string>
       ? A
       : string
     : string
@@ -189,7 +192,7 @@ export interface RouteBuilder<Tag extends string, Params> {
    * Add query parameters to this route.
    */
   readonly query: <Q extends Record<string, unknown>, I>(
-    schema: Schema.Schema<Q, I, never>
+    schema: Schema.Codec<Q, I>
   ) => RouteDefinition<Tag, Params, Q>
 
   /**
@@ -234,7 +237,7 @@ export interface RouteBuilder<Tag extends string, Params> {
  */
 export const path = <
   P extends string,
-  S extends Partial<Record<ExtractParams<P>, Schema.Schema<any, string>>> = {}
+  S extends Partial<Record<ExtractParams<P>, Schema.Codec<any, string>>> = {}
 >(
   pattern: P,
   schemas?: S
@@ -247,7 +250,7 @@ export const path = <
     matcher: matcher as Matcher.Matcher<ParamsFromSchemas<ExtractParams<P>, S>>,
 
     query: <Q extends Record<string, unknown>, I>(
-      querySchema: Schema.Schema<Q, I, never>
+      querySchema: Schema.Codec<Q, I>
     ): RouteDefinition<string, ParamsFromSchemas<ExtractParams<P>, S>, Q> => {
       const queryKeys = getSchemaKeys(querySchema)
       const overlap = (queryKeys ?? []).filter(k => paramKeys.includes(k))
@@ -305,33 +308,18 @@ function extractParamKeys(pattern: string): string[] {
 /**
  * Extract property keys from a Schema (works for Schema.Struct).
  *
- * NOTE: This relies on Effect's current Schema AST representation,
- * specifically that `schema.ast` is a TypeLiteral with `propertySignatures`.
- * If the Effect Schema internals change, this function may need updating.
+ * NOTE: This relies on Effect's Schema AST representation, specifically that a
+ * struct's `schema.ast` is an `Objects` node with `propertySignatures`.
  *
  * @internal
  */
-function getSchemaKeys(schema: Schema.Schema<any, any, never>): string[] | undefined {
-  const ast = schema.ast as unknown
-  if (
-    typeof ast === 'object' &&
-    ast !== null &&
-    '_tag' in ast &&
-    (ast as { _tag: unknown })._tag === 'TypeLiteral' &&
-    'propertySignatures' in ast &&
-    Array.isArray((ast as { propertySignatures: unknown }).propertySignatures)
-  ) {
-    // Index-signature schemas (Schema.Record) can't be enumerated statically.
-    const indexSignatures = (ast as { indexSignatures?: unknown }).indexSignatures
-    if (Array.isArray(indexSignatures) && indexSignatures.length > 0) {
-      return undefined
-    }
-    const propertySignatures = (ast as {
-      propertySignatures: Array<{ name: PropertyKey }>
-    }).propertySignatures
-    return propertySignatures.map(ps => String(ps.name))
+function getSchemaKeys(schema: Schema.Top): string[] | undefined {
+  const ast = schema.ast
+  // Index-signature schemas (Schema.Record) can't be enumerated statically.
+  if (!SchemaAST.isObjects(ast) || ast.indexSignatures.length > 0) {
+    return undefined
   }
-  return undefined
+  return ast.propertySignatures.map(ps => String(ps.name))
 }
 
 /**
@@ -339,7 +327,7 @@ function getSchemaKeys(schema: Schema.Schema<any, any, never>): string[] | undef
  *
  * @internal
  */
-function buildMatcherFromPattern<S extends Record<string, Schema.Schema<any, string>>>(
+function buildMatcherFromPattern<S extends Record<string, Schema.Codec<any, string>>>(
   pattern: string,
   schemas: S
 ): Matcher.Matcher<any> {

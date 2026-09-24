@@ -209,7 +209,7 @@ describe('Navigation', () => {
         Effect.scoped(
           Effect.gen(function* () {
             const scope = yield* Scope.make()
-            const prog = yield* App.pipe(Scope.extend(scope))
+            const prog = yield* App.pipe(Scope.provide(scope))
             yield* Effect.forkScoped(Stream.runDrain(prog.model$))
             yield* Effect.sleep('150 millis')
             yield* Scope.close(scope, Exit.void)
@@ -260,7 +260,7 @@ describe('Navigation', () => {
               view: () => () => null,
               onUrlRequest: () => ({ type: 'UrlChanged', location: Navigation.getLocation() }),
               onUrlChange: (location) => ({ type: 'UrlChanged', location })
-            }).pipe(Scope.extend(scope))
+            }).pipe(Scope.provide(scope))
             yield* Effect.forkScoped(Stream.runDrain(prog.model$))
             yield* Effect.sleep('60 millis')
             yield* Scope.close(scope, Exit.void)
@@ -293,7 +293,7 @@ describe('Navigation', () => {
                   Navigation.urlChanges(() => ({ type: 'UA' })),
                   Navigation.urlChanges(() => ({ type: 'UB' }))
                 ])
-            ).pipe(Scope.extend(scope))
+            ).pipe(Scope.provide(scope))
             yield* Effect.forkScoped(Stream.runDrain(prog.model$))
             yield* Effect.sleep('40 millis')
             popHandlers.forEach((h) => h({ type: 'popstate' }))
@@ -339,7 +339,7 @@ describe('Navigation', () => {
                     ? (changes.push(msg.p!), [{ r: msg.p! }, Cmd.none])
                     : [m, Cmd.none],
               () => Navigation.urlChanges((l) => ({ type: 'U', p: l.pathname }))
-            ).pipe(Scope.extend(scope))
+            ).pipe(Scope.provide(scope))
             yield* Effect.forkScoped(Stream.runDrain(prog.model$))
             yield* Effect.sleep('40 millis')
             prog.dispatch({ type: 'Go' })
@@ -453,7 +453,7 @@ describe('Navigation', () => {
               [{ n: 0 }, Cmd.none],
               (msg, m) => (seen.push(msg.state), [{ n: m.n + 1 }, Cmd.none]),
               () => Navigation.urlChanges((location) => ({ state: location.state }))
-            ).pipe(Scope.extend(scope))
+            ).pipe(Scope.provide(scope))
             yield* Effect.forkScoped(Stream.runDrain(prog.model$))
             yield* Effect.sleep('40 millis')
 
