@@ -7,7 +7,7 @@
  * @since 0.1.0
  */
 import { Effect, Stream, SubscriptionRef, Queue, Fiber, pipe, Scope, Exit, Deferred, Cause, Scheduler } from 'effect'
-import { Cmd } from './Cmd'
+import { Cmd, mergeNow } from './Cmd'
 import { Sub, none as subNone, getSubEntries } from './Sub'
 
 // -------------------------------------------------------------------------------------
@@ -167,10 +167,18 @@ export const program = <Model, Msg, E = never, R = never>(
           const currentModel = yield* SubscriptionRef.get(modelRef)
           const [newModel, cmd] = update(msg, currentModel)
           yield* SubscriptionRef.set(modelRef, newModel)
+          const failures: Array<unknown> = []
           yield* Effect.sync(() => {
-            for (const listener of listeners) listener(newModel)
+            for (const listener of listeners) {
+              try {
+                listener(newModel)
+              } catch (error) {
+                failures.push(error)
+              }
+            }
           })
           yield* processCmd(cmd)
+          if (failures.length > 0) yield* Effect.die(failures[0])
         }),
         Effect.catchCause(surfaceCause)
       )
@@ -243,9 +251,7 @@ export const program = <Model, Msg, E = never, R = never>(
         }
         for (const [key, streams] of byKey) {
           if (!subFibers.has(key)) {
-            const merged = streams.length === 1
-              ? streams[0]
-              : Stream.mergeAll(streams, { concurrency: 'unbounded' })
+            const merged = streams.length === 1 ? streams[0] : mergeNow(streams)
             // Start now, so a source registers inside this diff rather than a macrotask later.
             const fiber = yield* Effect.forkIn(progScope, { startImmediately: true })(
               pipe(

@@ -97,6 +97,41 @@ describe('Effect 4 regressions', () => {
       })
     ))
 
+  it('Cmd.batch starts its members inside dispatch, as a single cmd does', () =>
+    Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const log: Array<string> = []
+          const body = (name: string): Cmd.Cmd<'got'> =>
+            Cmd.fromEffect(Effect.sync(() => (log.push(name), 'got' as const)))
+          const prog = yield* Platform.program<number, 'go' | 'got'>([0, Cmd.none], (msg, n) => [
+            n + 1,
+            msg === 'go' ? Cmd.batch([body('a'), Cmd.batch([body('b'), body('c')])]) : Cmd.none
+          ])
+          prog.dispatch('go')
+          log.push('returned')
+
+          expect(log).toEqual(['a', 'b', 'c', 'returned'])
+        })
+      )
+    ))
+
+  it('subscriptions sharing a key register while the program is built', () =>
+    Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const registered: Array<string> = []
+          const source = (name: string) =>
+            Sub.fromCallback<never>(() => (registered.push(name), () => {}), 'shared')
+          yield* Platform.program<number, never>([0, Cmd.none], (_msg, n) => [n, Cmd.none], () =>
+            Sub.batch([source('x'), source('y')])
+          )
+
+          expect(registered).toEqual(['x', 'y'])
+        })
+      )
+    ))
+
   describe('Http', () => {
     const origFetch = globalThis.fetch
     afterEach(() => {

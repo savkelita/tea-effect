@@ -221,6 +221,62 @@ describe('Navigation', () => {
       expect(changes).toContain('/')
     })
 
+    it('#8 also holds when the user subscriptions add urlChanges under the same key', async () => {
+      let path = '/unknown-route'
+      const popHandlers: Array<(e: any) => void> = []
+      ;(global as any).window = {
+        location: {
+          get pathname() { return path },
+          get search() { return '' },
+          get hash() { return '' },
+          get href() { return 'https://ex.com' + path },
+          get origin() { return 'https://ex.com' }
+        },
+        history: {
+          pushState: (_s: any, _t: any, url: string) => { path = new URL(url, 'https://ex.com').pathname },
+          replaceState: (_s: any, _t: any, url: string) => { path = new URL(url, 'https://ex.com').pathname }
+        },
+        addEventListener: (t: string, h: any) => { if (t === 'popstate') popHandlers.push(h) },
+        removeEventListener: () => {},
+        dispatchEvent: (e: any) => { if (e?.type === 'popstate') popHandlers.forEach((h) => h(e)) }
+      }
+      ;(global as any).PopStateEvent = class { type = 'popstate' }
+
+      type Model = { route: string }
+      type Msg = { type: 'UrlChanged'; location: Navigation.Location }
+      const changes: string[] = []
+      const onUrlChange = (location: Navigation.Location): Msg => ({ type: 'UrlChanged', location })
+      const App = Navigation.program<Model, Msg, null>({
+        init: (loc) =>
+          loc.pathname === '/unknown-route'
+            ? [{ route: loc.pathname }, Navigation.replaceUrl('/')]
+            : [{ route: loc.pathname }, Cmd.none],
+        update: (msg, m) =>
+          msg.type === 'UrlChanged'
+            ? (changes.push(msg.location.pathname), [{ route: msg.location.pathname }, Cmd.none])
+            : [m, Cmd.none],
+        view: () => () => null,
+        subscriptions: () => Navigation.urlChanges(onUrlChange),
+        onUrlRequest: () => ({ type: 'UrlChanged', location: Navigation.getLocation() }),
+        onUrlChange
+      })
+
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const scope = yield* Scope.make()
+            const prog = yield* App.pipe(Scope.provide(scope))
+            yield* Effect.forkScoped(Stream.runDrain(prog.model$))
+            yield* Effect.sleep('150 millis')
+            yield* Scope.close(scope, Exit.void)
+          })
+        )
+      )
+
+      expect(path).toBe('/')
+      expect(changes).toContain('/')
+    })
+
     it('F: a stray navigation with no subscriber does not leak into a later program', async () => {
       let path = '/home'
       const popHandlers: Array<(e: any) => void> = []

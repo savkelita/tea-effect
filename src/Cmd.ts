@@ -9,7 +9,7 @@
  *
  * @since 0.1.0
  */
-import { Effect, Stream, pipe } from 'effect'
+import { Cause, Effect, Exit, Queue, Stream, pipe } from 'effect'
 
 // -------------------------------------------------------------------------------------
 // model
@@ -100,7 +100,34 @@ export const batch = <Msg, E, R>(cmds: ReadonlyArray<Cmd<Msg, E, R>>): Cmd<Msg, 
   if (active.length === 1) {
     return active[0]
   }
-  return pipe(
-    Stream.mergeAll(active, { concurrency: 'unbounded' })
-  )
+  return mergeNow(active)
 }
+
+/**
+ * `Stream.mergeAll` with unbounded concurrency, except that every stream starts
+ * while the merged one does. `mergeAll` forks them to start a scheduler tick later.
+ *
+ * @internal
+ */
+export const mergeNow = <A, E, R>(streams: ReadonlyArray<Stream.Stream<A, E, R>>): Stream.Stream<A, E, R> =>
+  Stream.unwrap(
+    Effect.gen(function* () {
+      const queue = yield* Queue.unbounded<A, E | Cause.Done>()
+      yield* Effect.addFinalizer(() => Queue.shutdown(queue))
+      let running = streams.length
+      if (running === 0) yield* Queue.end(queue)
+      for (const stream of streams) {
+        yield* pipe(
+          Stream.runForEach(stream, (a) => Queue.offer(queue, a)),
+          Effect.exit,
+          Effect.flatMap((exit) =>
+            Exit.isSuccess(exit)
+              ? --running === 0 ? Queue.end(queue) : Effect.void
+              : Queue.failCause(queue, exit.cause)
+          ),
+          Effect.forkScoped({ startImmediately: true })
+        )
+      }
+      return Stream.fromQueue(queue)
+    })
+  )

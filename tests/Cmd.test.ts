@@ -64,6 +64,17 @@ describe('Cmd', () => {
       expect(messages).toContain('first')
       expect(messages).toContain('second')
     })
+
+    it('should fail as a whole and interrupt the other commands when one fails', async () => {
+      let finalized = false
+      const pending = Cmd.fromEffect(Effect.ensuring(Effect.never, Effect.sync(() => { finalized = true })))
+      const failing = Cmd.fromEffect(Effect.fail('boom'))
+
+      const error = await Effect.runPromise(Effect.flip(Stream.runDrain(Cmd.batch([pending, failing]))))
+
+      expect(error).toBe('boom')
+      expect(finalized).toBe(true)
+    })
   })
 
   describe('fromEffect', () => {
