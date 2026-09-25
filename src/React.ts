@@ -170,8 +170,8 @@ const forkWith = <R>(runtime: ProgramRuntime<R> | undefined) =>
  */
 export interface UseProgramOptions<R> {
   /**
-   * Runtime to use for running effects.
-   * If not provided, uses the default runtime.
+   * The `ManagedRuntime` or `Context` to run the program with (see `ProgramRuntime`).
+   * If not provided, the program runs with `Effect.runFork` and no services.
    */
   readonly runtime?: ProgramRuntime<R>
 }

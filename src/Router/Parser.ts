@@ -179,11 +179,11 @@ export type QueryRecord = Record<string, string | ReadonlyArray<string> | undefi
  * @example
  * ```ts
  * import { Schema } from 'effect'
- * import { Parser } from 'tea-effect/Router'
+ * import { IntFromString, Parser } from 'tea-effect/Router'
  *
  * const parser = Parser.query(Schema.Struct({
  *   q: Schema.String,
- *   page: Schema.optional(Schema.NumberFromString)
+ *   page: Schema.optional(IntFromString)
  * }))
  * // ?q=hello&page=2 → { q: 'hello', page: 2 }
  * ```

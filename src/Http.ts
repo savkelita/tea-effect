@@ -632,8 +632,8 @@ export const toTaskRaw = <A>(req: Request<A>): Task<A, HttpError, HttpClient.Htt
       )
     : execute
 
-  // Apply credentials via the fetch client's RequestInit context tag (the flag
-  // is otherwise inert). Mock clients simply ignore the unused service.
+  // Apply credentials via the fetch client's RequestInit service (the flag is
+  // otherwise inert). Mock clients simply ignore it.
   return req.withCredentials
     ? withTimeout.pipe(Effect.provideService(FetchHttpClient.RequestInit, { credentials: 'include' }))
     : withTimeout

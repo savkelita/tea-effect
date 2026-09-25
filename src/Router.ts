@@ -39,11 +39,17 @@
  * const url = Router.format(routes.user, { id: 42 }) // '/users/42'
  *
  * // 4. Pattern match
- * Match.value(route).pipe(
- *   Match.tag('home', () => <Home />),
- *   Match.tag('user', ({ params }) => <User id={params.id} />),
- *   Match.exhaustive
- * )
+ * Option.match(route, {
+ *   onNone: () => <NotFound />,
+ *   onSome: (r) =>
+ *     Match.value(r).pipe(
+ *       Match.tag('home', () => <Home />),
+ *       Match.tag('users', () => <Users />),
+ *       Match.tag('user', ({ params }) => <User id={params.id} />),
+ *       Match.tag('search', ({ query }) => <Search q={query.q} />),
+ *       Match.exhaustive
+ *     )
+ * })
  * ```
  *
  * @since 0.6.0
@@ -219,7 +225,7 @@ export interface RouteBuilder<Tag extends string, Params> {
  * // Simple path
  * const home = Router.path('/')
  *
- * // With parameters. `IntFromString` rejects 'NaN', 'Infinity' and non-integers,
+ * // With parameters. `IntFromString` rejects 'abc', 'NaN', 'Infinity' and non-integers,
  * // which bare `Schema.NumberFromString` would accept as an id.
  * const user = Router.path('/users/:id', { id: Router.IntFromString })
  *
@@ -227,7 +233,7 @@ export interface RouteBuilder<Tag extends string, Params> {
  * const search = Router.path('/search').query(
  *   Schema.Struct({
  *     q: Schema.String,
- *     page: Schema.optional(Schema.NumberFromString)
+ *     page: Schema.optional(Router.IntFromString)
  *   })
  * )
  * ```
@@ -630,7 +636,7 @@ function buildRouteObject(
  * const routes = Router.routes({
  *   user: Router.path('/users/:id', { id: Router.IntFromString }),
  *   search: Router.path('/search').query(
- *     Schema.Struct({ q: Schema.String, page: Schema.optional(Schema.NumberFromString) })
+ *     Schema.Struct({ q: Schema.String, page: Schema.optional(Router.IntFromString) })
  *   )
  * })
  *

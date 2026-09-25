@@ -158,11 +158,11 @@ export const param = <K extends string, A>(
  * @example
  * ```ts
  * import { Schema } from 'effect'
- * import { Matcher } from 'tea-effect/Router'
+ * import { IntFromString, Matcher } from 'tea-effect/Router'
  *
  * const matcher = Matcher.query(Schema.Struct({
  *   q: Schema.String,
- *   page: Schema.optional(Schema.NumberFromString)
+ *   page: Schema.optional(IntFromString)
  * }))
  * // Parses: ?q=hello&page=2 → { q: 'hello', page: 2 }
  * // Formats: { q: 'hello', page: 2 } → ?q=hello&page=2

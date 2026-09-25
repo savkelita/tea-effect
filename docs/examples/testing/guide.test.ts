@@ -40,7 +40,7 @@ describe('commands', () => {
 
 // #region layer
 describe('a command that requires a service', () => {
-  it('runs against a test layer - same tag, different value behind it', async () => {
+  it('runs against a test layer - same key, different value behind it', async () => {
     const [, cmd] = Users.update({ type: 'LoadRequested' }, { _tag: 'Idle' })
 
     // `cmd` has ApiClient in its `R`. Providing the test layer discharges it.

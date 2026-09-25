@@ -46,8 +46,9 @@ without any rendering:
 
 The assertion `[0, 1, 2, 1]` is worth pausing on. There is no `await`, no timer,
 no flush - and the values are already there. `dispatch` runs `update` and
-notifies subscribers **before it returns**, which is what makes tea-effect safe
-for controlled inputs. Here it also makes the test boring, which is the point.
+notifies `subscribe` listeners **before it returns**, which is what makes
+tea-effect safe for controlled inputs. Here it also makes the test boring, which
+is the point.
 
 ::: details The complete file, imports included
 <<< @/examples/testing/guide.test.ts

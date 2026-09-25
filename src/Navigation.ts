@@ -194,10 +194,8 @@ export const getLocation = (): Location => {
 }
 
 // A programmatic pushUrl/replaceUrl notifies urlChanges by dispatching a
-// synthetic popstate. It is deferred to a macrotask so that a navigation issued
-// from init's Cmd is delivered even though the urlChanges listener registers
-// slightly after the initial Cmd runs. (No module-global state, so nothing
-// leaks between program instances.)
+// synthetic popstate, deferred to a macrotask. (No module-global state, so
+// nothing leaks between program instances.)
 const notifyUrlChange = (): void => {
   // Snapshot the location now (right after this pushState), so a burst of
   // navigations in one macrotask each delivers its own URL rather than every

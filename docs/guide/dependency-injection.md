@@ -10,7 +10,7 @@ its type, and the program does not compile until something provides one.
 
 ## Declaring a service
 
-A service is a tag plus the shape behind it. Nothing here says *how* the data is
+A service is a key plus the shape behind it. Nothing here says *how* the data is
 fetched - only what a feature is allowed to ask for:
 
 <<< @/examples/di/ApiClient.ts#service
@@ -22,7 +22,7 @@ fetched - only what a feature is allowed to ask for:
 That is the real JSONPlaceholder request from the [HTTP guide](/guide/http),
 moved behind the service. The feature no longer knows *which* request is made or
 how the client is built - though here it still speaks the transport's error
-type, because the tag's error channel is `Http.HttpError`. Give the service an
+type, because the service's error channel is `Http.HttpError`. Give the service an
 error type of its own, and map `HttpError` into it inside `ApiClientLive`, if you
 want the feature independent of the transport as well.
 
@@ -53,7 +53,7 @@ view function, unchanged by any of this - it is in the full file below.)
 
 ### A program inside a React component
 
-`useProgram` wants a `Runtime`, not a `Layer`:
+`useProgram` wants a `ManagedRuntime`, not a `Layer`:
 
 <<< @/examples/di/main.tsx#hook
 
@@ -64,11 +64,17 @@ a missing argument on a hook that used to take two, this is why: something in
 your command tree started requiring a service.
 :::
 
-::: warning Synchronous versus asynchronous layers
-`Effect.runSync(AppRuntime)` works because `Layer.succeed` builds synchronously.
-A layer that opens a connection, reads configuration, or acquires any resource
-cannot be built that way - use `await AppRuntime.runtime()`, which is a Promise,
-and hold the result in state while it resolves.
+::: tip Synchronous and asynchronous layers
+Pass the `ManagedRuntime` itself. It builds its layer the first time it is used,
+so a layer that opens a connection, reads configuration, or acquires any resource
+needs nothing extra. Messages dispatched before the layer is ready are buffered,
+and applied once the program starts. If the layer fails to build, the program
+never starts and the hook does not report the error, so recover inside the layer
+(for example with `Layer.catch`).
+
+`runtime` also accepts a `Context` you already hold, such as the result of
+`await AppRuntime.context()`. Both forms are the `ProgramRuntime<R>` type,
+exported from `tea-effect/React`.
 :::
 
 ::: details The complete file, imports included
@@ -81,7 +87,7 @@ Swapping the implementation is swapping a value:
 
 <<< @/examples/di/ApiClient.ts#test
 
-No mocking library, no module interception, no reset between tests. The same tag,
+No mocking library, no module interception, no reset between tests. The same key,
 a different value behind it - and the compiler checks that the substitute has the
 right shape.
 
