@@ -4,7 +4,7 @@
  * Inspired by [Elm's Http module](https://package.elm-lang.org/packages/elm/http/latest/Http)
  * and [gcanti's elm-ts](https://github.com/gcanti/elm-ts).
  *
- * Uses `@effect/platform` for HTTP and `Schema` for encoding/decoding.
+ * Uses `effect/unstable/http` for HTTP and `Schema` for encoding/decoding.
  *
  * @example
  * ```ts
@@ -33,11 +33,8 @@
  *
  * @since 0.2.0
  */
-import { Effect, Schema, Duration, Stream } from 'effect'
-import * as HttpClient from '@effect/platform/HttpClient'
-import * as HttpClientRequest from '@effect/platform/HttpClientRequest'
-import * as HttpClientError from '@effect/platform/HttpClientError'
-import { FetchHttpClient } from '@effect/platform'
+import { Context, Effect, Schema, Duration, Stream } from 'effect'
+import { FetchHttpClient, HttpClient, HttpClientError, HttpClientRequest } from 'effect/unstable/http'
 import type { Cmd } from './Cmd'
 import type { Task } from './Task'
 
@@ -95,8 +92,8 @@ export interface Header {
  * @category Model
  */
 export type Expect<A> =
-  | { readonly _tag: 'ExpectJson'; readonly decoder: Schema.Schema<A> }
-  | { readonly _tag: 'ExpectString'; readonly decoder: Schema.Schema<A> }
+  | { readonly _tag: 'ExpectJson'; readonly decoder: Schema.Decoder<A> }
+  | { readonly _tag: 'ExpectString'; readonly decoder: Schema.Decoder<A> }
 
 /**
  * Request body with optional Schema encoder for runtime validation.
@@ -106,7 +103,7 @@ export type Expect<A> =
  */
 export type Body =
   | { readonly _tag: 'EmptyBody' }
-  | { readonly _tag: 'JsonBody'; readonly value: unknown; readonly encoder: Schema.Schema<unknown, unknown> | undefined }
+  | { readonly _tag: 'JsonBody'; readonly value: unknown; readonly encoder: Schema.Encoder<unknown> | undefined }
 
 /**
  * HTTP Request descriptor.
@@ -198,7 +195,7 @@ export const badRequestBody = (error: unknown): HttpError => ({ _tag: 'BadReques
  * @since 0.2.0
  * @category Expectations
  */
-export const expectJson = <A>(decoder: Schema.Schema<A>): Expect<A> => ({
+export const expectJson = <A>(decoder: Schema.Decoder<A>): Expect<A> => ({
   _tag: 'ExpectJson',
   decoder
 })
@@ -254,12 +251,12 @@ export const emptyBody: Body = {
  * @category Body
  */
 export const jsonBody = <A, I>(
-  schema: Schema.Schema<A, I>,
+  schema: Schema.Codec<A, I>,
   value: A
 ): Body => ({
   _tag: 'JsonBody',
   value,
-  encoder: schema as Schema.Schema<unknown, unknown>
+  encoder: schema
 })
 
 /**
@@ -526,22 +523,23 @@ export const bearerToken = (token: string): Header => authorization(`Bearer ${to
 // -------------------------------------------------------------------------------------
 
 const mapHttpClientError = (error: HttpClientError.HttpClientError): HttpError => {
-  if (error._tag === 'RequestError') {
-    if (error.reason === 'InvalidUrl') {
-      return badUrl(error.request.url)
-    }
-    return networkError(error.cause)
+  // A mock client may fail with something else entirely.
+  if (!HttpClientError.isHttpClientError(error)) {
+    return networkError(error)
   }
-  if (error._tag === 'ResponseError') {
-    if (error.reason === 'Decode') {
-      return badBody(error.cause)
-    }
-    if (error.reason === 'StatusCode') {
-      return badStatus(error.response.status, '')
-    }
-    return networkError(error.cause)
+  const reason = error.reason
+  switch (reason._tag) {
+    case 'InvalidUrlError':
+      return badUrl(reason.request.url)
+    case 'DecodeError':
+      return badBody(reason.cause)
+    case 'StatusCodeError':
+      return badStatus(reason.response.status, '')
+    case 'TransportError':
+    case 'EncodeError':
+    case 'EmptyBodyError':
+      return networkError(reason.cause)
   }
-  return networkError(error)
 }
 
 // -------------------------------------------------------------------------------------
@@ -555,7 +553,7 @@ const mapHttpClientError = (error: HttpClientError.HttpClientError): HttpError =
  * @example
  * ```ts
  * import { Effect, Layer, Schema } from 'effect'
- * import * as HttpClient from '@effect/platform/HttpClient'
+ * import { HttpClient } from 'effect/unstable/http'
  * import * as Http from 'tea-effect/Http'
  *
  * const User = Schema.Struct({ id: Schema.Number, name: Schema.String })
@@ -582,7 +580,7 @@ export const toTaskRaw = <A>(req: Request<A>): Task<A, HttpError, HttpClient.Htt
       POST: HttpClientRequest.post,
       PUT: HttpClientRequest.put,
       PATCH: HttpClientRequest.patch,
-      DELETE: HttpClientRequest.del,
+      DELETE: HttpClientRequest.delete,
       HEAD: HttpClientRequest.head,
       OPTIONS: HttpClientRequest.options
     }[req.method]
@@ -600,65 +598,55 @@ export const toTaskRaw = <A>(req: Request<A>): Task<A, HttpError, HttpClient.Htt
       // request-side (no request is sent), so map them to BadRequestBody rather
       // than the response-side BadBody.
       const bodyValue = req.body.encoder
-        ? yield* Schema.encode(req.body.encoder)(req.body.value).pipe(Effect.mapError(badRequestBody))
+        ? yield* Schema.encodeUnknownEffect(Schema.toCodecJson(req.body.encoder))(req.body.value).pipe(Effect.mapError(badRequestBody))
         : req.body.value
       httpReq = yield* HttpClientRequest.bodyJson(httpReq, bodyValue).pipe(Effect.mapError(badRequestBody))
     }
 
     // Execute request
-    const response = yield* client.execute(httpReq)
+    const response = yield* client.execute(httpReq).pipe(Effect.mapError(mapHttpClientError))
 
     // Check status: anything outside 2xx is a BadStatus (matches Elm), so a
     // surfaced 304/3xx/1xx doesn't fall through to the decode path.
     if (response.status < 200 || response.status >= 300) {
-      const body = yield* response.text
+      const body = yield* response.text.pipe(Effect.mapError(mapHttpClientError))
       return yield* Effect.fail(badStatus(response.status, body))
     }
 
     // Read the body as raw text for ExpectString, JSON otherwise, then decode.
-    const raw = req.expect._tag === 'ExpectString'
-      ? yield* response.text
-      : yield* response.json
-    const decoded = yield* Schema.decodeUnknown(req.expect.decoder)(raw)
-
-    return decoded
+    if (req.expect._tag === 'ExpectString') {
+      const text = yield* response.text.pipe(Effect.mapError(mapHttpClientError))
+      return yield* Schema.decodeUnknownEffect(req.expect.decoder)(text).pipe(Effect.mapError(badBody))
+    }
+    const json = yield* response.json.pipe(Effect.mapError(mapHttpClientError))
+    return yield* Schema.decodeUnknownEffect(Schema.toCodecJson(req.expect.decoder))(json).pipe(Effect.mapError(badBody))
   })
 
   // Apply timeout if specified
   const withTimeout = req.timeout !== undefined
     ? execute.pipe(
-        Effect.timeoutFail({
+        Effect.timeoutOrElse({
           duration: Duration.millis(req.timeout),
-          onTimeout: () => timeout
+          orElse: () => Effect.fail(timeout)
         })
       )
     : execute
 
-  const handled = withTimeout.pipe(
-    Effect.catchAll((error) => {
-      // Handle our own HttpError
-      if (typeof error === 'object' && error !== null && '_tag' in error) {
-        const err = error as { _tag: string }
-        if (err._tag === 'BadStatus' || err._tag === 'BadBody' || err._tag === 'BadRequestBody' ||
-            err._tag === 'BadUrl' || err._tag === 'Timeout' || err._tag === 'NetworkError') {
-          return Effect.fail(error as HttpError)
-        }
-        // Map Effect Platform errors
-        if (err._tag === 'RequestError' || err._tag === 'ResponseError') {
-          return Effect.fail(mapHttpClientError(error as HttpClientError.HttpClientError))
-        }
-      }
-      return Effect.fail(badBody(error))
-    }),
-    Effect.scoped
-  )
-
-  // Apply credentials via the fetch client's RequestInit context tag (the flag
-  // is otherwise inert). Mock clients simply ignore the unused service.
+  // Apply credentials via the fetch client's RequestInit service (the flag is
+  // otherwise inert). Mock clients simply ignore it.
   return req.withCredentials
-    ? handled.pipe(Effect.provideService(FetchHttpClient.RequestInit, { credentials: 'include' }))
-    : handled
+    ? withTimeout.pipe(Effect.provideService(FetchHttpClient.RequestInit, { credentials: 'include' }))
+    : withTimeout
 }
+
+// FetchHttpClient.Fetch caches globalThis.fetch on first use; look it up per request
+// unless the caller provided one.
+const withCurrentFetch = <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
+  Effect.flatMap(Effect.context<never>(), (context) =>
+    Context.getOrUndefined(context, FetchHttpClient.Fetch) === undefined
+      ? Effect.provideService(effect, FetchHttpClient.Fetch, globalThis.fetch)
+      : effect
+  )
 
 /**
  * Converts a Request to a Task (Effect) that can fail with HttpError.
@@ -682,7 +670,7 @@ export const toTaskRaw = <A>(req: Request<A>): Task<A, HttpError, HttpClient.Htt
  * @category Execution
  */
 export const toTask = <A>(req: Request<A>): Task<A, HttpError, HttpRequirements> =>
-  toTaskRaw(req).pipe(Effect.provide(FetchHttpClient.layer))
+  toTaskRaw(req).pipe(Effect.provide(FetchHttpClient.layer), withCurrentFetch)
 
 /**
  * Sends an HTTP request and converts it to a Cmd that requires HttpClient.

@@ -134,10 +134,10 @@ export const int = <K extends string>(key: K): Matcher<{ readonly [P in K]: numb
  * import { Schema } from 'effect'
  * import { Matcher } from 'tea-effect/Router'
  *
- * const id = Matcher.param('id', Schema.UUID)
+ * const id = Matcher.param('id', Schema.String.check(Schema.isGUID()))
  *
  * // Supply `encode` when `String(value)` is not the segment you want.
- * const day = Matcher.param('day', Schema.Date, (d) => d.toISOString().slice(0, 10))
+ * const day = Matcher.param('day', Schema.DateFromString, (d) => d.toISOString().slice(0, 10))
  * ```
  *
  * @since 0.6.0
@@ -145,7 +145,7 @@ export const int = <K extends string>(key: K): Matcher<{ readonly [P in K]: numb
  */
 export const param = <K extends string, A>(
   key: K,
-  schema: Schema.Schema<A, string>,
+  schema: Schema.Codec<A, string>,
   encode: (a: A) => string = String
 ): Matcher<{ readonly [P in K]: A }> => ({
   parser: Parser.param(key, schema),
@@ -158,11 +158,11 @@ export const param = <K extends string, A>(
  * @example
  * ```ts
  * import { Schema } from 'effect'
- * import { Matcher } from 'tea-effect/Router'
+ * import { IntFromString, Matcher } from 'tea-effect/Router'
  *
  * const matcher = Matcher.query(Schema.Struct({
  *   q: Schema.String,
- *   page: Schema.optional(Schema.NumberFromString)
+ *   page: Schema.optional(IntFromString)
  * }))
  * // Parses: ?q=hello&page=2 → { q: 'hello', page: 2 }
  * // Formats: { q: 'hello', page: 2 } → ?q=hello&page=2
@@ -172,7 +172,7 @@ export const param = <K extends string, A>(
  * @category Primitives
  */
 export const query = <A extends Record<string, unknown>, I>(
-  schema: Schema.Schema<A, I, never>
+  schema: Schema.Codec<A, I>
 ): Matcher<A> => ({
   parser: Parser.query(schema),
   formatter: Formatter.query<A>()

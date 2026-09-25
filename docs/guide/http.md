@@ -5,15 +5,19 @@ The `Http` module follows Elm: a request is a **value**, and sending it produces
 
 Everything on this page runs against
 [JSONPlaceholder](https://jsonplaceholder.typicode.com), a free public test API.
-Nothing below is a stand-in.
+Nothing below is a stand-in, apart from the test client in
+[Against a stub client](#against-a-stub-client).
 
 ## Install
 
-`Http` is the one module with an extra peer dependency:
+`Http` needs no extra package. It is built on Effect's `HttpClient`, which ships
+inside `effect`, so the base install covers it:
 
 ```sh
-npm install @effect/platform
+npm install tea-effect effect
 ```
+
+tea-effect no longer uses `@effect/platform`.
 
 No client configuration is needed - `Http.send` and `Http.toTask` provide
 Effect's `FetchHttpClient` themselves.
@@ -28,6 +32,18 @@ whether a response is allowed into your model.
 A JSONPlaceholder user carries more fields than these - `address`, `phone`,
 `company`, `website`. `Schema.Struct` ignores what you do not list, so your model
 stays as small as the feature needs.
+
+`expectJson` takes a `Schema.Decoder`, and `jsonBody` a `Schema.Codec`. A schema
+passed inline, or left to inference as above, fits both. If you annotate one, use
+`Schema.Codec<User>`. A value typed `Schema.Schema<User>` does not compile here:
+that type tracks only the decoded type, not the services decoding needs.
+
+Both functions go through the schema's JSON codec, `Schema.toCodecJson`. A
+`Schema.Date` field travels as an ISO string, `Schema.BigInt` as a decimal
+string, and `Schema.Option` as `{ _tag: 'Some', value }` or `{ _tag: 'None' }`.
+A `Schema.optional` field that holds `undefined` is sent as `null`, and `null` in
+a response decodes to `undefined`. Leave the key out when the server must not
+see it.
 
 ## Describing the request
 
@@ -85,6 +101,10 @@ The two that get confused:
 | `BadBody` | The response arrived, but it did not match your schema. |
 | `BadRequestBody` | Encoding *your* payload failed, so no request was ever sent. |
 
+When the schema rejects a value, `error` holds its `Schema.SchemaError` - from
+decoding for `BadBody`, from encoding for `BadRequestBody`. A response that is
+not JSON at all is a `BadBody` holding the `SyntaxError`.
+
 ::: details The complete file, imports included
 <<< @/examples/http/Users.tsx
 :::
@@ -100,6 +120,23 @@ The two that get confused:
 
 `sendBy(onSuccess, onError)(req)` is `send` with the arguments the other way
 round, for pipelines.
+
+## Against a stub client
+
+A test should not depend on JSONPlaceholder being up. The client that `sendRaw`
+and `toTaskRaw` leave in `R` is Effect's `HttpClient` - the same service
+`FetchHttpClient` provides. A stub is an ordinary one, built with
+`HttpClient.make`:
+
+<<< @/examples/http/stub.test.ts#stub
+
+To simulate a failure, fail with an `HttpClientError`. Its `reason` picks the
+case: a `TransportError` is what a rejected `fetch` produces, and it becomes a
+`NetworkError`.
+
+::: details The complete file, imports included
+<<< @/examples/http/stub.test.ts
+:::
 
 ## Next
 

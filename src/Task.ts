@@ -8,8 +8,8 @@
  *
  * @since 0.1.0
  */
-import { Effect, Either, Stream, pipe } from 'effect'
-import { Cmd } from './Cmd'
+import { Effect, Result, Stream, pipe } from "effect";
+import { Cmd } from "./Cmd";
 
 // -------------------------------------------------------------------------------------
 // model
@@ -22,7 +22,7 @@ import { Cmd } from './Cmd'
  * @since 0.1.0
  * @category Model
  */
-export type Task<A, E = never, R = never> = Effect.Effect<A, E, R>
+export type Task<A, E = never, R = never> = Effect.Effect<A, E, R>;
 
 // -------------------------------------------------------------------------------------
 // constructors
@@ -34,7 +34,7 @@ export type Task<A, E = never, R = never> = Effect.Effect<A, E, R>
  * @since 0.1.0
  * @category Constructors
  */
-export const succeed = <A>(a: A): Task<A> => Effect.succeed(a)
+export const succeed = <A>(a: A): Task<A> => Effect.succeed(a);
 
 /**
  * Creates a Task that fails with the given error.
@@ -42,7 +42,7 @@ export const succeed = <A>(a: A): Task<A> => Effect.succeed(a)
  * @since 0.1.0
  * @category Constructors
  */
-export const fail = <E>(e: E): Task<never, E> => Effect.fail(e)
+export const fail = <E>(e: E): Task<never, E> => Effect.fail(e);
 
 // -------------------------------------------------------------------------------------
 // conversions to Cmd
@@ -69,16 +69,17 @@ export const fail = <E>(e: E): Task<never, E> => Effect.fail(e)
  * @since 0.1.0
  * @category Conversions
  */
-export const perform = <A, Msg>(f: (a: A) => Msg) =>
+export const perform =
+  <A, Msg>(f: (a: A) => Msg) =>
   <R>(task: Task<A, never, R>): Cmd<Msg, never, R> =>
-    Stream.fromEffect(Effect.map(task, f))
+    Stream.fromEffect(Effect.map(task, f));
 
 /**
  * Executes a Task that can fail as a Cmd, mapping both success and failure to a Msg.
  *
  * @example
  * ```ts
- * import { Either, pipe } from 'effect'
+ * import { Result, pipe } from 'effect'
  * import * as Task from 'tea-effect/Task'
  *
  * type User = { readonly id: number; readonly name: string }
@@ -95,9 +96,9 @@ export const perform = <A, Msg>(f: (a: A) => Msg) =>
  * ) => pipe(
  *   fetchUser(userId),
  *   Task.attempt(
- *     Either.match({
- *       onLeft: (error: ApiError): Msg => ({ type: 'FetchFailed', error }),
- *       onRight: (user: User): Msg => ({ type: 'FetchSucceeded', user })
+ *     Result.match({
+ *       onFailure: (error: ApiError): Msg => ({ type: 'FetchFailed', error }),
+ *       onSuccess: (user: User): Msg => ({ type: 'FetchSucceeded', user })
  *     })
  *   )
  * )
@@ -106,15 +107,16 @@ export const perform = <A, Msg>(f: (a: A) => Msg) =>
  * @since 0.1.0
  * @category Conversions
  */
-export const attempt = <E, A, Msg>(f: (result: Either.Either<A, E>) => Msg) =>
+export const attempt =
+  <E, A, Msg>(f: (result: Result.Result<A, E>) => Msg) =>
   <R>(task: Task<A, E, R>): Cmd<Msg, never, R> =>
     Stream.fromEffect(
       pipe(
         task,
-        Effect.either,
-        Effect.map(either => f(either))
-      )
-    )
+        Effect.result,
+        Effect.map((result) => f(result)),
+      ),
+    );
 
 /**
  * Alternative to `attempt` with separate handlers for success and failure.
@@ -147,17 +149,18 @@ export const attempt = <E, A, Msg>(f: (result: Either.Either<A, E>) => Msg) =>
  * @since 0.1.0
  * @category Conversions
  */
-export const attemptWith = <A, E, Msg, R>(handlers: {
-  readonly onSuccess: (a: A) => Msg
-  readonly onFailure: (e: E) => Msg
-}): ((task: Task<A, E, R>) => Cmd<Msg, never, R>) =>
+export const attemptWith =
+  <A, E, Msg, R>(handlers: {
+    readonly onSuccess: (a: A) => Msg;
+    readonly onFailure: (e: E) => Msg;
+  }): ((task: Task<A, E, R>) => Cmd<Msg, never, R>) =>
   (task) =>
     attempt(
-      Either.match({
-        onLeft: handlers.onFailure,
-        onRight: handlers.onSuccess
-      })
-    )(task)
+      Result.match({
+        onFailure: handlers.onFailure,
+        onSuccess: handlers.onSuccess,
+      }),
+    )(task);
 
 // -------------------------------------------------------------------------------------
 // combinators
@@ -169,9 +172,10 @@ export const attemptWith = <A, E, Msg, R>(handlers: {
  * @since 0.1.0
  * @category Combinators
  */
-export const map = <A, B>(f: (a: A) => B) =>
+export const map =
+  <A, B>(f: (a: A) => B) =>
   <E, R>(task: Task<A, E, R>): Task<B, E, R> =>
-    Effect.map(task, f)
+    Effect.map(task, f);
 
 /**
  * Maps the error value of a Task.
@@ -179,9 +183,10 @@ export const map = <A, B>(f: (a: A) => B) =>
  * @since 0.1.0
  * @category Combinators
  */
-export const mapError = <E, E2>(f: (e: E) => E2) =>
+export const mapError =
+  <E, E2>(f: (e: E) => E2) =>
   <A, R>(task: Task<A, E, R>): Task<A, E2, R> =>
-    Effect.mapError(task, f)
+    Effect.mapError(task, f);
 
 /**
  * Chains Tasks sequentially.
@@ -189,9 +194,10 @@ export const mapError = <E, E2>(f: (e: E) => E2) =>
  * @since 0.1.0
  * @category Combinators
  */
-export const flatMap = <A, B, E2, R2>(f: (a: A) => Task<B, E2, R2>) =>
+export const flatMap =
+  <A, B, E2, R2>(f: (a: A) => Task<B, E2, R2>) =>
   <E, R>(task: Task<A, E, R>): Task<B, E | E2, R | R2> =>
-    Effect.flatMap(task, f)
+    Effect.flatMap(task, f);
 
 /**
  * Provides error recovery for a Task.
@@ -199,9 +205,10 @@ export const flatMap = <A, B, E2, R2>(f: (a: A) => Task<B, E2, R2>) =>
  * @since 0.1.0
  * @category Combinators
  */
-export const catchAll = <E, A2, E2, R2>(f: (e: E) => Task<A2, E2, R2>) =>
+export const catchAll =
+  <E, A2, E2, R2>(f: (e: E) => Task<A2, E2, R2>) =>
   <A, R>(task: Task<A, E, R>): Task<A | A2, E2, R | R2> =>
-    Effect.catchAll(task, f)
+    Effect.catch(task, f);
 
 /**
  * Runs two Tasks concurrently and returns both results.
@@ -211,9 +218,13 @@ export const catchAll = <E, A2, E2, R2>(f: (e: E) => Task<A2, E2, R2>) =>
  */
 export const both = <A, E, R, B, E2, R2>(
   taskA: Task<A, E, R>,
-  taskB: Task<B, E2, R2>
+  taskB: Task<B, E2, R2>,
 ): Task<readonly [A, B], E | E2, R | R2> =>
-  Effect.all([taskA, taskB], { concurrency: 2 }) as Task<readonly [A, B], E | E2, R | R2>
+  Effect.all([taskA, taskB], { concurrency: 2 }) as Task<
+    readonly [A, B],
+    E | E2,
+    R | R2
+  >;
 
 /**
  * Runs all Tasks concurrently and returns all results.
@@ -222,6 +233,6 @@ export const both = <A, E, R, B, E2, R2>(
  * @category Combinators
  */
 export const all = <A, E, R>(
-  tasks: ReadonlyArray<Task<A, E, R>>
+  tasks: ReadonlyArray<Task<A, E, R>>,
 ): Task<ReadonlyArray<A>, E, R> =>
-  Effect.all(tasks, { concurrency: 'unbounded' })
+  Effect.all(tasks, { concurrency: "unbounded" });

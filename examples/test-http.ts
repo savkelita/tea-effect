@@ -54,7 +54,7 @@ const main = Effect.gen(function* () {
       })
     ),
     Stream.runDrain,
-    Effect.fork
+    Effect.forkChild
   )
 
   // Wait a bit for initial state

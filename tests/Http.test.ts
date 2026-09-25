@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { Schema, pipe, Effect, Either } from 'effect'
+import { Schema, pipe, Effect, Option, Result } from 'effect'
 import * as Http from '../src/Http'
 
 describe('Http', () => {
@@ -255,34 +255,34 @@ describe('Http', () => {
     })
     afterEach(() => { globalThis.fetch = origFetch })
 
-    const runEither = <A>(task: Http.Task<A, Http.HttpError, never>) =>
-      Effect.runPromise(Effect.either(task))
+    const runResult = <A>(task: Effect.Effect<A, Http.HttpError>) =>
+      Effect.runPromise(Effect.result(task))
 
     it('#6: expectString decodes a plain-text body', async () => {
-      const result = await runEither(Http.toTask(Http.get('http://x/text', Http.expectString)))
-      expect(Either.isRight(result)).toBe(true)
-      if (Either.isRight(result)) expect(result.right).toBe('OK')
+      const result = await runResult(Http.toTask(Http.get('http://x/text', Http.expectString)))
+      expect(Result.isSuccess(result)).toBe(true)
+      if (Result.isSuccess(result)) expect(result.success).toBe('OK')
     })
 
     it('#16: a 304 response is BadStatus, not BadBody', async () => {
-      const result = await runEither(
+      const result = await runResult(
         Http.toTask(Http.get('http://x/notmod', Http.expectJson(Schema.Struct({ ok: Schema.Boolean }))))
       )
-      expect(Either.isLeft(result)).toBe(true)
-      if (Either.isLeft(result)) {
-        expect(result.left._tag).toBe('BadStatus')
-        if (result.left._tag === 'BadStatus') expect(result.left.status).toBe(304)
+      expect(Result.isFailure(result)).toBe(true)
+      if (Result.isFailure(result)) {
+        expect(result.failure._tag).toBe('BadStatus')
+        if (result.failure._tag === 'BadStatus') expect(result.failure.status).toBe(304)
       }
     })
 
     it('#17: a malformed URL maps to BadUrl', async () => {
-      const result = await runEither(Http.toTask(Http.get('http://exa mple.com/api', Http.expectWhatever)))
-      expect(Either.isLeft(result)).toBe(true)
-      if (Either.isLeft(result)) expect(result.left._tag).toBe('BadUrl')
+      const result = await runResult(Http.toTask(Http.get('http://exa mple.com/api', Http.expectWhatever)))
+      expect(Result.isFailure(result)).toBe(true)
+      if (Result.isFailure(result)) expect(result.failure._tag).toBe('BadUrl')
     })
 
     it('#29: a request-body encode failure is BadRequestBody and sends no request', async () => {
-      const result = await runEither(
+      const result = await runResult(
         Http.toTask(
           Http.post(
             'http://x/api',
@@ -291,19 +291,60 @@ describe('Http', () => {
           )
         )
       )
-      expect(Either.isLeft(result)).toBe(true)
-      if (Either.isLeft(result)) expect(result.left._tag).toBe('BadRequestBody')
+      expect(Result.isFailure(result)).toBe(true)
+      if (Result.isFailure(result)) expect(result.failure._tag).toBe('BadRequestBody')
       expect(fetchCalls).toBe(0)
     })
 
     it('#5: withCredentials sends credentials: include', async () => {
-      await runEither(pipe(Http.get('http://x/api', Http.expectWhatever), Http.withCredentials, Http.toTask))
+      await runResult(pipe(Http.get('http://x/api', Http.expectWhatever), Http.withCredentials, Http.toTask))
       expect(lastInit?.credentials).toBe('include')
     })
 
     it('#5: without withCredentials, credentials is not set', async () => {
-      await runEither(Http.toTask(Http.get('http://x/api', Http.expectWhatever)))
+      await runResult(Http.toTask(Http.get('http://x/api', Http.expectWhatever)))
       expect(lastInit?.credentials).toBeUndefined()
+    })
+  })
+
+  describe('JSON codec', () => {
+    const origFetch = globalThis.fetch
+    let sent: unknown
+    let reply: unknown
+
+    beforeEach(() => {
+      sent = undefined
+      globalThis.fetch = (async (input: any, init: any) => {
+        const body = init?.body ?? (input instanceof Request ? await input.text() : undefined)
+        sent = body === undefined || body === '' ? undefined : typeof body === 'string' ? body : new TextDecoder().decode(body)
+        return new Response(JSON.stringify(reply), { status: 200, headers: { 'content-type': 'application/json' } })
+      }) as typeof fetch
+    })
+    afterEach(() => { globalThis.fetch = origFetch })
+
+    const Event = Schema.Struct({ at: Schema.Date, n: Schema.BigInt, maybe: Schema.Option(Schema.Number) })
+
+    it('expectJson decodes Date, BigInt and Option from their JSON forms', async () => {
+      reply = { at: '1970-01-01T00:00:00.000Z', n: '12', maybe: { _tag: 'Some', value: 1 } }
+      const result = await Effect.runPromise(Effect.result(Http.toTask(Http.get('http://x/api', Http.expectJson(Event)))))
+      expect(Result.isSuccess(result) ? result.success : result.failure._tag).toEqual({
+        at: new Date(0),
+        n: 12n,
+        maybe: Option.some(1)
+      })
+    })
+
+    it('jsonBody encodes Date, BigInt and Option to their JSON forms', async () => {
+      reply = null
+      const result = await Effect.runPromise(
+        Effect.result(
+          Http.toTask(
+            Http.post('http://x/api', Http.jsonBody(Event, { at: new Date(0), n: 12n, maybe: Option.some(1) }), Http.expectWhatever)
+          )
+        )
+      )
+      expect(Result.isSuccess(result) || result.failure._tag).toBe(true)
+      expect(JSON.parse(sent as string)).toEqual({ at: '1970-01-01T00:00:00.000Z', n: '12', maybe: { _tag: 'Some', value: 1 } })
     })
   })
 })

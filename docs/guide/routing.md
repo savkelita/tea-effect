@@ -14,9 +14,10 @@ sign it is doing only one job.
 
 <<< @/examples/routing/routes.ts#routes
 
-`Router.IntFromString` rather than `Schema.NumberFromString` is deliberate: the
-bare version accepts `'NaN'` and `'Infinity'`, so `/users/NaN` would parse as a
-valid route with `id: NaN`.
+`Router.IntFromString` rather than `Schema.NumberFromString` is deliberate. In
+Effect 4 the bare version turns any string into a number - `'abc'` becomes `NaN`
+and `''` becomes `0` - so `/users/abc` would parse as a valid route with
+`id: NaN`.
 
 `RouteType` gives you the union the rest of the application matches on:
 
