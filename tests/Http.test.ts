@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { Schema, pipe, Effect, Option, Result } from 'effect'
+import { Schema, pipe, Effect, Result } from 'effect'
 import * as Http from '../src/Http'
 
 describe('Http', () => {
@@ -304,47 +304,6 @@ describe('Http', () => {
     it('#5: without withCredentials, credentials is not set', async () => {
       await runResult(Http.toTask(Http.get('http://x/api', Http.expectWhatever)))
       expect(lastInit?.credentials).toBeUndefined()
-    })
-  })
-
-  describe('JSON codec', () => {
-    const origFetch = globalThis.fetch
-    let sent: unknown
-    let reply: unknown
-
-    beforeEach(() => {
-      sent = undefined
-      globalThis.fetch = (async (input: any, init: any) => {
-        const body = init?.body ?? (input instanceof Request ? await input.text() : undefined)
-        sent = body === undefined || body === '' ? undefined : typeof body === 'string' ? body : new TextDecoder().decode(body)
-        return new Response(JSON.stringify(reply), { status: 200, headers: { 'content-type': 'application/json' } })
-      }) as typeof fetch
-    })
-    afterEach(() => { globalThis.fetch = origFetch })
-
-    const Event = Schema.Struct({ at: Schema.Date, n: Schema.BigInt, maybe: Schema.Option(Schema.Number) })
-
-    it('expectJson decodes Date, BigInt and Option from their JSON forms', async () => {
-      reply = { at: '1970-01-01T00:00:00.000Z', n: '12', maybe: { _tag: 'Some', value: 1 } }
-      const result = await Effect.runPromise(Effect.result(Http.toTask(Http.get('http://x/api', Http.expectJson(Event)))))
-      expect(Result.isSuccess(result) ? result.success : result.failure._tag).toEqual({
-        at: new Date(0),
-        n: 12n,
-        maybe: Option.some(1)
-      })
-    })
-
-    it('jsonBody encodes Date, BigInt and Option to their JSON forms', async () => {
-      reply = null
-      const result = await Effect.runPromise(
-        Effect.result(
-          Http.toTask(
-            Http.post('http://x/api', Http.jsonBody(Event, { at: new Date(0), n: 12n, maybe: Option.some(1) }), Http.expectWhatever)
-          )
-        )
-      )
-      expect(Result.isSuccess(result) || result.failure._tag).toBe(true)
-      expect(JSON.parse(sent as string)).toEqual({ at: '1970-01-01T00:00:00.000Z', n: '12', maybe: { _tag: 'Some', value: 1 } })
     })
   })
 })

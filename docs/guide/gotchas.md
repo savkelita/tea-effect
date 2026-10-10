@@ -56,42 +56,19 @@ Navigation.pushUrl(`${pathname}${search}${hash}`)
 The query string and hash are separate fields on `Location`. Dropping them loses
 exactly the information a search or filter page depends on.
 
-### `NumberFromString` accepts any string
+### `NumberFromString` accepts `NaN`
 
 ```ts
-// Wrong: /users/abc parses as a valid route, with id NaN
+// Wrong: /users/NaN parses as a valid route
 Router.path('/users/:id', { id: Schema.NumberFromString })
 
 // Right
 Router.path('/users/:id', { id: Router.IntFromString })
 ```
 
-In Effect 4, `Schema.NumberFromString` is plain `Number()` coercion: `'abc'`
-becomes `NaN` and `''` becomes `0`. So `/users/abc` matches with `id: NaN`, and
-`?page=` matches with `page: 0`. `'Infinity'` and non-integers get through too.
-`Router.IntFromString` rejects all of these, which is why it exists.
-
-The same holds for a `NumberFromString` field in `Http.expectJson`: `"abc"` in
-the response decodes to `NaN` rather than failing.
-
-### `Schema.Date` in a query never matches
-
-```ts
-// Wrong: /log?from=2024-01-02 never matches
-Router.path('/log').query(Schema.Struct({ from: Schema.Date }))
-
-// Right
-Router.path('/log').query(Schema.Struct({ from: Schema.DateFromString }))
-```
-
-In Effect 4, `Schema.Date` expects a `Date` object and rejects strings. Query
-values arrive as strings, so the route never matches and the page falls through
-to your fallback. `Schema.DateFromString` parses the string - it is what Effect 3
-called `Schema.Date`. As a path param, `Schema.Date` does not compile.
-
-`Schema.UUID` is gone too, but that one fails to compile.
-`Schema.String.check(Schema.isGUID())` accepts the same ids. `Schema.isUUID()` is
-stricter: it also checks the version and variant digits.
+`Schema.NumberFromString` accepts `'NaN'`, `'Infinity'` and non-integers. In
+Effect 4 it accepts any string: it is plain `Number()` coercion, so `'abc'`
+becomes `NaN` and `''` becomes `0`. `Router.IntFromString` exists for this reason.
 
 ### Batched commands have no ordering
 
@@ -107,39 +84,10 @@ These fail loudly - but the message is not always obvious.
 
 When your commands or subscriptions require a service - that is, `R` is no longer
 `never` - `makeUseProgram`'s signature changes shape to demand
-`options.runtime`. A hook that took two arguments yesterday now needs four. The
-error does not mention the runtime: it says `Expected 4 arguments, but got 2`,
-and its note says `An argument for 'subscriptions' was not provided.`
+`options.runtime`. A hook that took two arguments yesterday now needs four.
 
-That is intentional: without the runtime there is no way to satisfy `R`. Pass the
-`ManagedRuntime` itself - `{ runtime: AppRuntime }` - or a `Context` you already
-hold. `Effect.runSync(AppRuntime)` no longer compiles. See
+That is intentional: without the runtime there is no way to satisfy `R`. See
 [dependency injection](/guide/dependency-injection).
-
-### A schema annotated `Schema.Schema<A>` is rejected
-
-```ts
-// Does not compile
-const Annotated: Schema.Schema<{ readonly id: number }> = Schema.Struct({ id: Schema.Number })
-Http.expectJson(Annotated)
-// Type 'unknown' is not assignable to type 'never'.
-
-// Compiles
-const User = Schema.Struct({ id: Schema.Number })
-Http.expectJson(User)
-```
-
-In Effect 4, `Schema.Schema<A>` records only the decoded type - its encoded type
-and the services it needs are `unknown`. `Http.expectJson` takes a
-`Schema.Decoder<A>`, and `jsonBody`, `LocalStorage` and `Router` take a
-`Schema.Codec<A, I>`, so the annotation throws away what they check. Leave it off
-and let inference keep the full type. If you want one, `Schema.Codec<A, I>` fits
-everywhere, and `Schema.Decoder<A>` is enough for `expectJson`.
-
-Schemas that transform are fine: `expectJson` accepts a struct with
-`NumberFromString` or `DateFromString` fields. A `Schema.Date` field works too,
-unlike in a route query: `Http` reads JSON through `Schema.toCodecJson`, which
-decodes an ISO string into a `Date`.
 
 ### `HttpError` has six cases
 
@@ -151,21 +99,6 @@ what you want.
 The pair people confuse: **`BadBody`** is a response that did not match your
 schema; **`BadRequestBody`** is your own payload failing to encode, meaning no
 request was sent at all.
-
-### Errors inside `effect`'s own declarations
-
-```text
-error TS2304: Cannot find name 'AsyncDisposable'.
-error TS2304: Cannot find name 'Disposable'.
-error TS2550: Property 'asyncDispose' does not exist on type 'SymbolConstructor'. Do you need to change your target library? Try changing the 'lib' compiler option to 'esnext' or later.
-```
-
-All three point into `node_modules/effect`. Effect 4's declarations use
-`Disposable`, `AsyncDisposable` and `Symbol.asyncDispose`, so with
-`"lib": ["ES2022", "DOM"]` and no `skipLibCheck` they appear as soon as you
-import any tea-effect module. `ES2023` and `ES2024` do not help. Add
-`"ESNext.Disposable"` to `lib`, as in [the tsconfig](/guide/getting-started#tsconfig),
-or use `"ESNext"` in place of `"ES2022"`.
 
 ## Things that are true but surprising
 
@@ -211,10 +144,8 @@ literal segment, not a capture.
 
 `Program.subscribe` is synchronous - the listener runs inside `dispatch`, before
 it returns. `Program.model$` carries the same values through a `Stream` consumed
-on a fiber, so when a value lands depends on that fiber. An idle consumer often
-gets it inside `dispatch`, even before the `subscribe` listeners. One that has not
-started yet, or is still busy with the previous value, gets it after `dispatch`
-returns.
+on a fiber, so when a value lands depends on that fiber: sometimes inside
+`dispatch`, sometimes after it returns.
 
 Use `subscribe` for rendering; use `model$` for logging, devtools, or anything
 that composes with other streams. Rendering from `model$` gives up the guarantee

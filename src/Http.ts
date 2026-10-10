@@ -523,7 +523,16 @@ export const bearerToken = (token: string): Header => authorization(`Bearer ${to
 // -------------------------------------------------------------------------------------
 
 const mapHttpClientError = (error: HttpClientError.HttpClientError): HttpError => {
-  // A mock client may fail with something else entirely.
+  // A mock client may fail with something else entirely: an HttpError passes through,
+  // anything else is a NetworkError.
+  const err: unknown = error
+  if (typeof err === 'object' && err !== null && '_tag' in err) {
+    const tag = (err as { _tag: string })._tag
+    if (tag === 'BadStatus' || tag === 'BadBody' || tag === 'BadRequestBody' ||
+        tag === 'BadUrl' || tag === 'Timeout' || tag === 'NetworkError') {
+      return err as HttpError
+    }
+  }
   if (!HttpClientError.isHttpClientError(error)) {
     return networkError(error)
   }
@@ -598,7 +607,7 @@ export const toTaskRaw = <A>(req: Request<A>): Task<A, HttpError, HttpClient.Htt
       // request-side (no request is sent), so map them to BadRequestBody rather
       // than the response-side BadBody.
       const bodyValue = req.body.encoder
-        ? yield* Schema.encodeUnknownEffect(Schema.toCodecJson(req.body.encoder))(req.body.value).pipe(Effect.mapError(badRequestBody))
+        ? yield* Schema.encodeUnknownEffect(req.body.encoder)(req.body.value).pipe(Effect.mapError(badRequestBody))
         : req.body.value
       httpReq = yield* HttpClientRequest.bodyJson(httpReq, bodyValue).pipe(Effect.mapError(badRequestBody))
     }
@@ -614,12 +623,10 @@ export const toTaskRaw = <A>(req: Request<A>): Task<A, HttpError, HttpClient.Htt
     }
 
     // Read the body as raw text for ExpectString, JSON otherwise, then decode.
-    if (req.expect._tag === 'ExpectString') {
-      const text = yield* response.text.pipe(Effect.mapError(mapHttpClientError))
-      return yield* Schema.decodeUnknownEffect(req.expect.decoder)(text).pipe(Effect.mapError(badBody))
-    }
-    const json = yield* response.json.pipe(Effect.mapError(mapHttpClientError))
-    return yield* Schema.decodeUnknownEffect(Schema.toCodecJson(req.expect.decoder))(json).pipe(Effect.mapError(badBody))
+    const raw = req.expect._tag === 'ExpectString'
+      ? yield* response.text.pipe(Effect.mapError(mapHttpClientError))
+      : yield* response.json.pipe(Effect.mapError(mapHttpClientError))
+    return yield* Schema.decodeUnknownEffect(req.expect.decoder)(raw).pipe(Effect.mapError(badBody))
   })
 
   // Apply timeout if specified

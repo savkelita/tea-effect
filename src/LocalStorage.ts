@@ -123,11 +123,11 @@ export const getTask = <A, I>(
     }
 
     const parsed = yield* Effect.try({
-      try: (): unknown => JSON.parse(raw),
+      try: () => JSON.parse(raw) as I,
       catch: (error) => jsonParseError(key, error)
     })
 
-    const decoded = yield* Schema.decodeUnknownEffect(Schema.toCodecJson(schema))(parsed).pipe(
+    const decoded = yield* Schema.decodeEffect(schema)(parsed).pipe(
       Effect.mapError((error) => decodeError(key, error))
     )
 
@@ -151,10 +151,10 @@ export const setTask = <A, I>(
   Effect.gen(function* () {
     const storage = yield* getStorage()
 
-    // Encode through the schema's JSON codec, so Date/BigInt/Option get their
-    // JSON forms. A value with no JSON form fails as EncodeError instead of
-    // being stored and breaking the next get.
-    const json = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.toCodecJson(schema)))(value).pipe(
+    // Encode straight to a JSON string via Schema. A value that can't serialize
+    // (e.g. encodes to undefined) fails as EncodeError instead of storing the
+    // literal string "undefined" and breaking the next get.
+    const json = yield* Schema.encodeEffect(Schema.fromJsonString(schema))(value).pipe(
       Effect.mapError((error) => encodeError(key, error))
     )
 
@@ -451,11 +451,11 @@ export const onChange = <A, I, Msg>(
 
       return Effect.gen(function* () {
         const parsed = yield* Effect.try({
-          try: (): unknown => JSON.parse(event.newValue!),
+          try: () => JSON.parse(event.newValue!) as I,
           catch: (error) => jsonParseError(key, error)
         })
 
-        const decoded = yield* Schema.decodeUnknownEffect(Schema.toCodecJson(schema))(parsed).pipe(
+        const decoded = yield* Schema.decodeEffect(schema)(parsed).pipe(
           Effect.mapError((error) => decodeError(key, error))
         )
 

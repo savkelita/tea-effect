@@ -7,7 +7,7 @@
  * @since 0.1.0
  */
 import { Effect, Stream, SubscriptionRef, Queue, Fiber, pipe, Scope, Exit, Deferred, Cause, Scheduler } from 'effect'
-import { Cmd, mergeNow } from './Cmd'
+import { Cmd, batch as cmdBatch } from './Cmd'
 import { Sub, none as subNone, getSubEntries } from './Sub'
 
 // -------------------------------------------------------------------------------------
@@ -251,7 +251,7 @@ export const program = <Model, Msg, E = never, R = never>(
         }
         for (const [key, streams] of byKey) {
           if (!subFibers.has(key)) {
-            const merged = streams.length === 1 ? streams[0] : mergeNow(streams)
+            const merged = cmdBatch(streams)
             // Start now, so a source registers inside this diff rather than a macrotask later.
             const fiber = yield* Effect.forkIn(progScope, { startImmediately: true })(
               pipe(

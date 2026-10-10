@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { Deferred, Effect, Exit, Fiber, Stream } from 'effect'
+import { Deferred, Effect, Exit, Fiber, Layer, Stream } from 'effect'
+import { HttpClient, HttpClientError } from 'effect/unstable/http'
 import * as Cmd from '../src/Cmd'
 import * as Sub from '../src/Sub'
 import * as Http from '../src/Http'
@@ -163,6 +164,26 @@ describe('Effect 4 regressions', () => {
         Effect.result(Http.toTask(Http.get('http://x/api', Http.expectWhatever)))
       )
       expect(result._tag === 'Failure' && result.failure._tag).toBe('NetworkError')
+    })
+
+    it('a mock client failing with an HttpError keeps it; anything else is a NetworkError', async () => {
+      const failingWith = (error: unknown) =>
+        Layer.succeed(
+          HttpClient.HttpClient,
+          HttpClient.make(() => Effect.fail(error as HttpClientError.HttpClientError))
+        )
+      const run = (error: unknown) =>
+        Effect.runPromise(
+          Effect.result(
+            Http.toTaskRaw(Http.get('http://x/api', Http.expectWhatever)).pipe(Effect.provide(failingWith(error)))
+          )
+        )
+
+      const passed = await run(Http.timeout)
+      const unknown = await run(new Error('boom'))
+
+      expect(passed._tag === 'Failure' && passed.failure).toEqual(Http.timeout)
+      expect(unknown._tag === 'Failure' && unknown.failure._tag).toBe('NetworkError')
     })
   })
 })
