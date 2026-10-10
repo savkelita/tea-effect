@@ -8,7 +8,7 @@
  *
  * @since 0.3.0
  */
-import { Effect, Option, Schema, Stream, ParseResult } from 'effect'
+import { Effect, Option, Schema, Stream } from 'effect'
 import type { Cmd } from './Cmd'
 import * as Sub from './Sub'
 
@@ -26,8 +26,8 @@ export type LocalStorageError =
   | { readonly _tag: 'StorageNotAvailable' }
   | { readonly _tag: 'QuotaExceeded'; readonly key: string }
   | { readonly _tag: 'JsonParseError'; readonly key: string; readonly error: unknown }
-  | { readonly _tag: 'DecodeError'; readonly key: string; readonly error: ParseResult.ParseError }
-  | { readonly _tag: 'EncodeError'; readonly key: string; readonly error: ParseResult.ParseError }
+  | { readonly _tag: 'DecodeError'; readonly key: string; readonly error: Schema.SchemaError }
+  | { readonly _tag: 'EncodeError'; readonly key: string; readonly error: Schema.SchemaError }
 
 /**
  * Constructs a StorageNotAvailable error.
@@ -63,7 +63,7 @@ export const jsonParseError = (key: string, error: unknown): LocalStorageError =
  * @since 0.3.0
  * @category Constructors
  */
-export const decodeError = (key: string, error: ParseResult.ParseError): LocalStorageError => ({
+export const decodeError = (key: string, error: Schema.SchemaError): LocalStorageError => ({
   _tag: 'DecodeError',
   key,
   error
@@ -75,7 +75,7 @@ export const decodeError = (key: string, error: ParseResult.ParseError): LocalSt
  * @since 0.3.0
  * @category Constructors
  */
-export const encodeError = (key: string, error: ParseResult.ParseError): LocalStorageError => ({
+export const encodeError = (key: string, error: Schema.SchemaError): LocalStorageError => ({
   _tag: 'EncodeError',
   key,
   error
@@ -112,7 +112,7 @@ const getStorage = (): Effect.Effect<Storage, LocalStorageError> =>
  */
 export const getTask = <A, I>(
   key: string,
-  schema: Schema.Schema<A, I>
+  schema: Schema.Codec<A, I>
 ): Effect.Effect<Option.Option<A>, LocalStorageError> =>
   Effect.gen(function* () {
     const storage = yield* getStorage()
@@ -127,7 +127,7 @@ export const getTask = <A, I>(
       catch: (error) => jsonParseError(key, error)
     })
 
-    const decoded = yield* Schema.decode(schema)(parsed).pipe(
+    const decoded = yield* Schema.decodeEffect(schema)(parsed).pipe(
       Effect.mapError((error) => decodeError(key, error))
     )
 
@@ -145,7 +145,7 @@ export const getTask = <A, I>(
  */
 export const setTask = <A, I>(
   key: string,
-  schema: Schema.Schema<A, I>,
+  schema: Schema.Codec<A, I>,
   value: A
 ): Effect.Effect<void, LocalStorageError> =>
   Effect.gen(function* () {
@@ -154,7 +154,7 @@ export const setTask = <A, I>(
     // Encode straight to a JSON string via Schema. A value that can't serialize
     // (e.g. encodes to undefined) fails as EncodeError instead of storing the
     // literal string "undefined" and breaking the next get.
-    const json = yield* Schema.encode(Schema.parseJson(schema))(value).pipe(
+    const json = yield* Schema.encodeEffect(Schema.fromJsonString(schema))(value).pipe(
       Effect.mapError((error) => encodeError(key, error))
     )
 
@@ -243,7 +243,7 @@ export const keysTask: Effect.Effect<ReadonlyArray<string>, LocalStorageError> =
  */
 export const get = <A, I, Msg>(
   key: string,
-  schema: Schema.Schema<A, I>,
+  schema: Schema.Codec<A, I>,
   handlers: {
     readonly onSuccess: (data: Option.Option<A>) => Msg
     readonly onError: (error: LocalStorageError) => Msg
@@ -282,7 +282,7 @@ export const get = <A, I, Msg>(
  */
 export const set = <A, I, Msg>(
   key: string,
-  schema: Schema.Schema<A, I>,
+  schema: Schema.Codec<A, I>,
   value: A,
   handlers: {
     readonly onSuccess: () => Msg
@@ -315,10 +315,10 @@ export const set = <A, I, Msg>(
  */
 export const setIgnoreErrors = <A, I>(
   key: string,
-  schema: Schema.Schema<A, I>,
+  schema: Schema.Codec<A, I>,
   value: A
 ): Cmd<never> =>
-  Stream.execute(Effect.ignore(setTask(key, schema, value)))
+  Stream.fromEffectDrain(Effect.ignore(setTask(key, schema, value)))
 
 /**
  * Removes an item from localStorage.
@@ -347,7 +347,7 @@ export const remove = <Msg>(
  * @category Commands
  */
 export const removeIgnoreErrors = (key: string): Cmd<never> =>
-  Stream.execute(Effect.ignore(removeTask(key)))
+  Stream.fromEffectDrain(Effect.ignore(removeTask(key)))
 
 /**
  * Clears all items from localStorage.
@@ -424,7 +424,7 @@ export const keys = <Msg>(handlers: {
  */
 export const onChange = <A, I, Msg>(
   key: string,
-  schema: Schema.Schema<A, I>,
+  schema: Schema.Codec<A, I>,
   handlers: {
     readonly onSuccess: (data: Option.Option<A>) => Msg
     readonly onError: (error: LocalStorageError) => Msg
@@ -432,27 +432,18 @@ export const onChange = <A, I, Msg>(
 ): Sub.Sub<Msg> =>
   // Stable key so keyed diffing keeps the single storage listener alive across
   // model changes (no re-register churn / no zero-listener gap).
-  Sub.withKey(`localStorage:onChange:${key}`, Stream.asyncPush<StorageEvent>((emit) =>
-    Effect.acquireRelease(
-      Effect.sync(() => {
-        if (typeof window === 'undefined') {
-          return null
-        }
-        const handler = (event: StorageEvent) => {
-          if (event.storageArea === window.localStorage && (event.key === key || event.key === null)) {
-            emit.single(event)
-          }
-        }
-        window.addEventListener('storage', handler)
-        return handler
-      }),
-      (handler) => Effect.sync(() => {
-        if (handler !== null) {
-          window.removeEventListener('storage', handler)
-        }
-      })
-    )
-  ).pipe(
+  Sub.withKey(`localStorage:onChange:${key}`, Sub.fromCallback<StorageEvent>((emit) => {
+    if (typeof window === 'undefined') {
+      return () => {}
+    }
+    const handler = (event: StorageEvent) => {
+      if (event.storageArea === window.localStorage && (event.key === key || event.key === null)) {
+        emit(event)
+      }
+    }
+    window.addEventListener('storage', handler)
+    return () => window.removeEventListener('storage', handler)
+  }).pipe(
     Stream.mapEffect((event) => {
       if (event.newValue === null) {
         return Effect.succeed(handlers.onSuccess(Option.none()))
@@ -464,13 +455,13 @@ export const onChange = <A, I, Msg>(
           catch: (error) => jsonParseError(key, error)
         })
 
-        const decoded = yield* Schema.decode(schema)(parsed).pipe(
+        const decoded = yield* Schema.decodeEffect(schema)(parsed).pipe(
           Effect.mapError((error) => decodeError(key, error))
         )
 
         return handlers.onSuccess(Option.some(decoded))
       }).pipe(
-        Effect.catchAll((error) => Effect.succeed(handlers.onError(error)))
+        Effect.catch((error) => Effect.succeed(handlers.onError(error)))
       )
     })
   ))

@@ -66,8 +66,9 @@ Router.path('/users/:id', { id: Schema.NumberFromString })
 Router.path('/users/:id', { id: Router.IntFromString })
 ```
 
-`Schema.NumberFromString` accepts `'NaN'`, `'Infinity'` and non-integers.
-`Router.IntFromString` exists for this reason.
+`Schema.NumberFromString` accepts `'NaN'`, `'Infinity'` and non-integers. In
+Effect 4 it accepts any string: it is plain `Number()` coercion, so `'abc'`
+becomes `NaN` and `''` becomes `0`. `Router.IntFromString` exists for this reason.
 
 ### Batched commands have no ordering
 
@@ -88,19 +89,6 @@ When your commands or subscriptions require a service - that is, `R` is no longe
 That is intentional: without the runtime there is no way to satisfy `R`. See
 [dependency injection](/guide/dependency-injection).
 
-### `expectJson` rejects schemas that transform
-
-```ts
-// Does not compile
-Http.expectJson(Schema.Struct({ n: Schema.NumberFromString }))
-// Type 'string' is not assignable to type 'number'
-```
-
-`Http.expectJson` takes `Schema.Schema<A>`, which means encoded and decoded types
-must be the same. A schema that converts on the way in - `NumberFromString`,
-`DateFromString` - does not fit. Decode the plain shape, then convert in
-`update`, or use `expectWhatever` and decode yourself.
-
 ### `HttpError` has six cases
 
 `BadUrl`, `Timeout`, `NetworkError`, `BadStatus`, `BadBody`, `BadRequestBody`.
@@ -114,14 +102,14 @@ request was sent at all.
 
 ## Things that are true but surprising
 
-### The root import pulls in `@effect/platform`
+### The root import loads every module
 
-`import { Cmd } from 'tea-effect'` loads every module, including `Http`, which
-imports `@effect/platform`. In CommonJS it throws outright if the package is
-missing.
+`import { Cmd } from 'tea-effect'` loads every module, `Http` included, and with
+it the HTTP client code from `effect` that `Http` imports. That code ships inside
+`effect`, so there is nothing extra to install, but it is in your graph.
 
-Import the subpath - `tea-effect/Cmd` - and it stays out. Every subpath except
-`tea-effect/Http` builds without it.
+Import the subpath - `tea-effect/Cmd` - and it stays out. The same holds for
+every subpath except `tea-effect/Http`.
 
 ### `urlChanges` does not emit the current URL
 
@@ -152,19 +140,20 @@ dispatch function.
 `:id` is recognised only when the segment starts with `:`. `/users/user-:id` is a
 literal segment, not a capture.
 
-### `model$` arrives a tick after `subscribe`
+### Only `subscribe` is synchronous
 
 `Program.subscribe` is synchronous - the listener runs inside `dispatch`, before
 it returns. `Program.model$` carries the same values through a `Stream` consumed
-on a fiber, so it lands later.
+on a fiber, so when a value lands depends on that fiber: sometimes inside
+`dispatch`, sometimes after it returns.
 
 Use `subscribe` for rendering; use `model$` for logging, devtools, or anything
-that composes with other streams. Rendering from `model$` reintroduces the
-one-tick delay that breaks controlled inputs.
+that composes with other streams. Rendering from `model$` gives up the guarantee
+that controlled inputs need.
 
 `React.run` renders through `subscribe` and is synchronous. `makeUseProgram`
-does not: it sets React state from `model$`, so the hook's re-render is a tick
-behind. A feature mounted through the hook that owns controlled text inputs
+does not: it sets React state from `model$`, so the hook's re-render has no such
+guarantee. A feature mounted through the hook that owns controlled text inputs
 should mount through `React.run` instead.
 
 ## Next

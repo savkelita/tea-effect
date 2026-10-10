@@ -3,7 +3,7 @@
  *
  * @since 0.1.0
  */
-import { Effect, Stream, Scope, Runtime, Fiber, pipe } from 'effect'
+import { Context, Effect, Stream, Scope, Fiber, pipe } from 'effect'
 import type * as ReactTypes from 'react'
 import { Cmd } from './Cmd'
 import { Sub, none as subNone } from './Sub'
@@ -152,10 +152,10 @@ export const run = <Model, Msg, E, R>(
  */
 export interface UseProgramOptions<R> {
   /**
-   * Runtime to use for running effects.
-   * If not provided, uses the default runtime.
+   * Context to use for running effects.
+   * If not provided, uses an empty context.
    */
-  readonly runtime?: Runtime.Runtime<R>
+  readonly runtime?: Context.Context<R>
 }
 
 /**
@@ -229,17 +229,17 @@ export const makeUseProgram = (React: ReactLike) => {
     update: (msg: Msg, model: Model) => readonly [Model, Cmd<Msg, E, R>],
     subscriptions: (model: Model) => Sub<Msg, E, R> = () => subNone,
     // runtime is required exactly when Cmds/Subs need services (R is not never),
-    // so the defaultRuntime fallback below is only reachable (and sound) for R = never.
+    // so the empty-context fallback below is only reachable (and sound) for R = never.
     ...rest: [R] extends [never]
       ? [options?: UseProgramOptions<never>]
-      : [options: { readonly runtime: Runtime.Runtime<R> }]
+      : [options: { readonly runtime: Context.Context<R> }]
   ): UseProgramResult<Model, Msg> => {
     const options = (rest[0] ?? {}) as UseProgramOptions<R>
     const [initialModel] = init
     // Thunk-wrap so a function-typed Model is stored, not called as a lazy init.
     const [model, setModel] = useState<Model>(() => initialModel)
     const programRef = useRef<Platform.Program<Model, Msg, E, R> | null>(null)
-    const fiberRef = useRef<Fiber.RuntimeFiber<void, E> | null>(null)
+    const fiberRef = useRef<Fiber.Fiber<void, E> | null>(null)
     // Buffer messages dispatched before the program is installed (e.g. from a
     // child's mount effect) instead of dropping them into a no-op. Bounded so a
     // component that never mounts its effect cannot grow it without limit.
@@ -259,7 +259,7 @@ export const makeUseProgram = (React: ReactLike) => {
       // Guards against a torn-down program's fibers writing React state after
       // cleanup (StrictMode remount shares this component's setModel).
       let active = true
-      const runtime = options.runtime ?? Runtime.defaultRuntime as Runtime.Runtime<R>
+      const runtime = options.runtime ?? Context.empty() as Context.Context<R>
 
       const setup = Effect.scoped(
         Effect.gen(function* () {
@@ -285,7 +285,7 @@ export const makeUseProgram = (React: ReactLike) => {
         })
       )
 
-      const fiber = Runtime.runFork(runtime)(setup as Effect.Effect<void, E, R>)
+      const fiber = Effect.runForkWith(runtime)(setup as Effect.Effect<void, E, R>)
       fiberRef.current = fiber
 
       return () => {
@@ -295,10 +295,10 @@ export const makeUseProgram = (React: ReactLike) => {
         // would otherwise accumulate messages without bound.
         dispatchRef.current = () => {}
         if (programRef.current) {
-          Runtime.runFork(runtime)(programRef.current.shutdown)
+          Effect.runForkWith(runtime)(programRef.current.shutdown)
         }
         if (fiberRef.current) {
-          Runtime.runFork(runtime)(Fiber.interrupt(fiberRef.current))
+          Effect.runForkWith(runtime)(Fiber.interrupt(fiberRef.current))
         }
       }
     }, [])
@@ -325,7 +325,7 @@ export const makeUseProgramWithLayer = (React: ReactLike) => {
     init: readonly [Model, Cmd<Msg, E, R>],
     update: (msg: Msg, model: Model) => readonly [Model, Cmd<Msg, E, R>],
     subscriptions: (model: Model) => Sub<Msg, E, R> = () => subNone,
-    runtime: Runtime.Runtime<R>
+    runtime: Context.Context<R>
   ): UseProgramResult<Model, Msg> => {
     return baseUseProgram(init, update, subscriptions, { runtime })
   }

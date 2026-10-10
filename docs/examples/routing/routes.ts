@@ -6,8 +6,8 @@ import * as Router from 'tea-effect/Router'
 export const routes = Router.routes({
   home: Router.path('/'),
   users: Router.path('/users'),
-  // `IntFromString` rejects 'NaN', 'Infinity' and non-integers, which bare
-  // `Schema.NumberFromString` would happily accept as an id.
+  // `IntFromString` rejects 'abc', 'NaN', 'Infinity' and non-integers, all of
+  // which bare `Schema.NumberFromString` would happily accept as an id.
   user: Router.path('/users/:id', { id: Router.IntFromString }),
   search: Router.path('/search').query(Schema.Struct({ q: Schema.String }))
 })

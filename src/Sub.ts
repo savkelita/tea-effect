@@ -5,7 +5,7 @@
  *
  * @since 0.1.0
  */
-import { Stream, pipe, Effect, Schedule } from 'effect'
+import { Stream, pipe, Effect, Schedule, Queue } from 'effect'
 
 // -------------------------------------------------------------------------------------
 // model
@@ -150,7 +150,7 @@ export const fromIterable = <Msg>(msgs: Iterable<Msg>): Sub<Msg> => {
 export const interval = <Msg>(ms: number, msg: Msg): Sub<Msg> =>
   keyed(
     `interval:${ms}:${stableStringify(msg)}`,
-    pipe(Stream.repeatEffect(Effect.succeed(msg)), Stream.schedule(Schedule.spaced(ms)))
+    pipe(Stream.fromEffectRepeat(Effect.succeed(msg)), Stream.schedule(Schedule.spaced(ms)))
   )
 
 /**
@@ -166,12 +166,18 @@ export const fromCallback = <Msg>(
   register: (emit: (msg: Msg) => void) => () => void,
   key?: string
 ): Sub<Msg> => {
-  const stream = Stream.async<Msg>((emit) => {
-    const cleanup = register((msg) => {
-      emit.single(msg)
+  // Not Stream.callback: it registers on a forked fiber, a macrotask later, missing events.
+  const stream: Sub<Msg> = Stream.unwrap(
+    Effect.gen(function* () {
+      const queue = yield* Queue.unbounded<Msg>()
+      yield* Effect.addFinalizer(() => Queue.shutdown(queue))
+      yield* Effect.acquireRelease(
+        Effect.sync(() => register((msg) => void Queue.offerUnsafe(queue, msg))),
+        (cleanup) => Effect.sync(cleanup)
+      )
+      return Stream.fromQueue(queue)
     })
-    return Effect.sync(() => cleanup())
-  })
+  )
   return key === undefined ? stream : keyed(`callback:${key}`, stream)
 }
 

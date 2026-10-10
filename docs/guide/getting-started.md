@@ -10,8 +10,12 @@ nothing checks those.
 
 ## Requirements
 
-- Node.js 18 or newer
-- TypeScript 5.3 or newer
+- Node.js `^20.19.0 || >=22.12.0`
+- TypeScript 5.9 or newer - Effect 4 requires it
+
+tea-effect is ESM only. CommonJS code can still `require('tea-effect')` on the
+Node versions above, because they can `require()` an ES module. Earlier
+releases, such as 20.18 or 22.11, fail with `ERR_REQUIRE_ESM`.
 
 ## Install
 
@@ -19,33 +23,31 @@ nothing checks those.
 npm install tea-effect effect
 ```
 
-`effect` is a peer dependency, so you install it yourself and control its version.
+`effect` is a peer dependency, so you install it yourself.
+tea-effect needs Effect 4.
 
-Two more peers are declared optional, because only one module each depends on them:
+`tea-effect/Http` needs no extra package: it uses the HTTP client that ships
+inside `effect`.
+
+`react` is also a peer, declared optional because only `tea-effect/React`
+depends on it:
 
 ```sh
-npm install @effect/platform   # tea-effect/Http needs this
 npm install react react-dom    # tea-effect/React needs these
 ```
 
-::: warning The root entry pulls `@effect/platform` in anyway
-`tea-effect`'s root entry re-exports every module, `Http` included, and `Http`
-imports `@effect/platform`. So `import { Cmd } from 'tea-effect'` loads it too,
-even if you never make a request - and in CommonJS it throws outright when the
-package is missing.
+::: tip Import from subpaths
+`tea-effect`'s root entry re-exports every module, so `import { Cmd } from 'tea-effect'`
+pulls in all of them, `Http` included. Importing the subpath - `tea-effect/Cmd`,
+`tea-effect/React` and so on - pulls in only that module and what it depends on.
 
-Importing the subpath keeps it out: `tea-effect/Cmd`, `tea-effect/Sub`,
-`tea-effect/Task`, `tea-effect/Platform`, `tea-effect/Html`, `tea-effect/React`,
-`tea-effect/Router`, `tea-effect/Navigation` and `tea-effect/LocalStorage` all
-build without it. Only `tea-effect/Http` requires it.
-
-Every example in this documentation uses the subpath form for that reason.
+Every example in this documentation uses the subpath form.
 :::
 
 ## tsconfig
 
-tea-effect ships as ESM with an `exports` map, and a few of its guarantees are
-only real under strict settings. Both matter here:
+tea-effect ships as ESM only, with an `exports` map, and a few of its guarantees
+are only real under strict settings. Both matter here:
 
 ```json
 {
@@ -53,7 +55,7 @@ only real under strict settings. Both matter here:
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "lib": ["ES2022", "DOM"],
+    "lib": ["ES2022", "DOM", "ESNext.Disposable"],
     "strict": true,
     "exactOptionalPropertyTypes": true,
     "jsx": "react-jsx"
@@ -61,12 +63,23 @@ only real under strict settings. Both matter here:
 }
 ```
 
-`moduleResolution` has to be `bundler`, `node16` or `nodenext`. TypeScript's
-default is `node10`, which ignores the package's `exports` map - and then none
-of the `tea-effect/X` subpath imports this documentation is built on will
-resolve.
+`ESNext.Disposable` is new with Effect 4. Effect's type declarations use
+`Disposable`, `AsyncDisposable` and `Symbol.asyncDispose`, so without it
+TypeScript reports three errors inside `node_modules/effect` as soon as a file
+imports `effect` or any tea-effect module. `"lib": ["ESNext", "DOM"]` works too,
+and so does `"skipLibCheck": true`. `ES2023` and `ES2024` are not enough. Keep
+`DOM` either way: effect's declarations use web types such as `ReadableStream`
+and `URL`.
 
-`jsx` is only needed if you write views in JSX.
+`moduleResolution` has to be `bundler`, `nodenext` or `node16`. The last two
+also need `module` changed from `ESNext`, for example to `nodenext`. `node10`
+ignores the packages' `exports` maps, and Effect 4 has no `main` or `types`
+field to fall back on - so neither `effect` nor the `tea-effect/X` subpath
+imports this documentation is built on will resolve. With `"module": "node16"`,
+importing tea-effect from a CommonJS file is error TS1479, because tea-effect has
+no CommonJS build. `"module": "nodenext"` does not have this problem.
+
+`strict` is also required by Effect 4. `jsx` is only needed if you write views in JSX.
 
 ## The four pieces
 
@@ -157,8 +170,9 @@ dependency injection guide.
 | Good for | Whole app | One feature, incremental adoption |
 
 If you are adding tea-effect to an existing codebase, start with Option B - with
-one caveat. Option A renders through `Program.subscribe`, inside `dispatch`;
-the hook sets React state from `model$`, which lands a tick later. That delay is
+one caveat. Option A renders through `Program.subscribe`, inside `dispatch`.
+The hook sets React state from `model$`, and that may happen inside `dispatch`
+or after it returns - there is no guarantee either way. A late update is
 visible on controlled text inputs, so give a feature that has them Option A
 until the hook moves over. [The mental model](/guide/mental-model) explains why
 the difference matters.

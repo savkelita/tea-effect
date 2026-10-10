@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { Effect, Option, Schema, Stream, Chunk, Exit, Scope } from 'effect'
+import { Effect, Option, Schema, Stream, Exit, Scope } from 'effect'
 import * as LocalStorage from '../src/LocalStorage'
 import * as Platform from '../src/Platform'
 import * as Cmd from '../src/Cmd'
@@ -32,7 +32,7 @@ const createMockStorage = () => {
 // Helper to run a Cmd and get the single message
 const runCmd = async <Msg>(cmd: Stream.Stream<Msg>): Promise<Msg> => {
   const result = await Effect.runPromise(Stream.runCollect(cmd))
-  const messages = Chunk.toArray(result)
+  const messages = result
   if (messages.length !== 1) {
     throw new Error(`Expected 1 message, got ${messages.length}`)
   }
@@ -198,7 +198,7 @@ describe('LocalStorage', () => {
       const user = { id: '1', name: 'John' }
       const cmd = LocalStorage.setIgnoreErrors('user', UserSchema, user)
       const result = await Effect.runPromise(Stream.runCollect(cmd))
-      const messages = Chunk.toArray(result)
+      const messages = result
 
       expect(messages).toEqual([])
       expect(mockStorage.setItem).toHaveBeenCalledWith('user', JSON.stringify(user))
@@ -226,7 +226,7 @@ describe('LocalStorage', () => {
 
       const cmd = LocalStorage.removeIgnoreErrors('key')
       const result = await Effect.runPromise(Stream.runCollect(cmd))
-      const messages = Chunk.toArray(result)
+      const messages = result
 
       expect(messages).toEqual([])
       expect(mockStorage.removeItem).toHaveBeenCalledWith('key')
@@ -458,7 +458,7 @@ describe('LocalStorage', () => {
               [{ n: 0 }, Cmd.none],
               (_msg, m) => [{ n: m.n + 1 }, Cmd.none],
               () => LocalStorage.onChange('c', Counter, { onSuccess: () => ({ type: 'Go' as const }), onError: () => ({ type: 'Go' as const }) })
-            ).pipe(Scope.extend(scope))
+            ).pipe(Scope.provide(scope))
             yield* Effect.forkScoped(Stream.runDrain(prog.model$))
             yield* Effect.sleep('30 millis')
             for (let i = 0; i < 4; i++) {

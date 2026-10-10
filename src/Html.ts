@@ -39,8 +39,9 @@ export interface Program<Model, Msg, Dom, E = never, R = never> extends Platform
   /**
    * Observes the rendered view SYNCHRONOUSLY, like Platform's `subscribe`: the renderer
    * runs with the current view right away, and again inside every `dispatch` before it
-   * returns. This is what `runWith` uses; `html$` carries the same views a tick later,
-   * which is too late for controlled DOM inputs.
+   * returns. This is what `runWith` uses. `html$` carries the same views through a Stream,
+   * delivered whenever the fiber consuming it runs (inside `dispatch`, or later), so do
+   * not render controlled DOM inputs from it.
    *
    * Returns a function that stops the observation.
    */

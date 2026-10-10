@@ -14,10 +14,10 @@ export default defineConfig({
     'src/LocalStorage.ts',
     'src/Router.ts',
   ],
-  format: ['cjs', 'esm'],
+  format: ['esm'],
   dts: true,
   clean: true,
   sourcemap: true,
   treeshake: true,
-  external: ['effect', 'react', '@effect/platform'],
+  external: ['effect', 'react'],
 })

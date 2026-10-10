@@ -1,4 +1,4 @@
-import { Effect, ManagedRuntime, Runtime } from 'effect'
+import { Context, Effect, ManagedRuntime } from 'effect'
 import * as React from 'react'
 import { createRoot } from 'react-dom/client'
 import * as Sub from 'tea-effect/Sub'
@@ -35,13 +35,13 @@ export const main = () => {
 
 // #region hook
 // Inside an existing React tree it is `useProgram` instead, and that wants a
-// Runtime rather than a Layer. Build it once, at module level.
+// Context rather than a Layer. Build it once, at module level.
 const AppRuntime = ManagedRuntime.make(ApiClientLive)
 
-// ApiClientLive is built synchronously, so the runtime can be too. A layer that
-// opens a connection or reads configuration would need `AppRuntime.runtime()`,
+// ApiClientLive is built synchronously, so the context can be too. A layer that
+// opens a connection or reads configuration would need `AppRuntime.context()`,
 // which is a Promise.
-const runtime: Runtime.Runtime<ApiClient> = Effect.runSync(AppRuntime)
+const runtime: Context.Context<ApiClient> = Effect.runSync(AppRuntime.contextEffect)
 
 const useProgram = TeaReact.makeUseProgram(React)
 
