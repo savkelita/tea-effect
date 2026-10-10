@@ -3,7 +3,7 @@
  *
  * @since 0.1.0
  */
-import { Context, Effect, Stream, Scope, Fiber, ManagedRuntime, pipe } from 'effect'
+import { Context, Effect, Stream, Scope, Fiber, pipe } from 'effect'
 import type * as ReactTypes from 'react'
 import { Cmd } from './Cmd'
 import { Sub, none as subNone } from './Sub'
@@ -145,24 +145,6 @@ export const run = <Model, Msg, E, R>(
 // -------------------------------------------------------------------------------------
 
 /**
- * What `useProgram` runs the program with: a `ManagedRuntime` built from your layer
- * (pass the runtime itself; its layer is built on first use), or a `Context` you
- * already hold.
- *
- * @since 0.9.0
- * @category Hooks
- */
-export type ProgramRuntime<R> = ManagedRuntime.ManagedRuntime<R, unknown> | Context.Context<R>
-
-const forkWith = <R>(runtime: ProgramRuntime<R> | undefined) =>
-  <A, E>(effect: Effect.Effect<A, E, R>): Fiber.Fiber<A, unknown> =>
-    runtime === undefined
-      ? Effect.runFork(effect as Effect.Effect<A, E, never>)
-      : Context.isContext(runtime)
-        ? Effect.runForkWith(runtime)(effect)
-        : runtime.runFork(effect)
-
-/**
  * Options for useProgram hook.
  *
  * @since 0.1.0
@@ -170,10 +152,10 @@ const forkWith = <R>(runtime: ProgramRuntime<R> | undefined) =>
  */
 export interface UseProgramOptions<R> {
   /**
-   * The `ManagedRuntime` or `Context` to run the program with (see `ProgramRuntime`).
-   * If not provided, the program runs with `Effect.runFork` and no services.
+   * Context to use for running effects.
+   * If not provided, uses an empty context.
    */
-  readonly runtime?: ProgramRuntime<R>
+  readonly runtime?: Context.Context<R>
 }
 
 /**
@@ -247,25 +229,24 @@ export const makeUseProgram = (React: ReactLike) => {
     update: (msg: Msg, model: Model) => readonly [Model, Cmd<Msg, E, R>],
     subscriptions: (model: Model) => Sub<Msg, E, R> = () => subNone,
     // runtime is required exactly when Cmds/Subs need services (R is not never),
-    // so the plain Effect.runFork fallback in forkWith is only reachable (and sound) for R = never.
+    // so the empty-context fallback below is only reachable (and sound) for R = never.
     ...rest: [R] extends [never]
       ? [options?: UseProgramOptions<never>]
-      : [options: { readonly runtime: ProgramRuntime<R> }]
+      : [options: { readonly runtime: Context.Context<R> }]
   ): UseProgramResult<Model, Msg> => {
     const options = (rest[0] ?? {}) as UseProgramOptions<R>
     const [initialModel] = init
     // Thunk-wrap so a function-typed Model is stored, not called as a lazy init.
     const [model, setModel] = useState<Model>(() => initialModel)
     const programRef = useRef<Platform.Program<Model, Msg, E, R> | null>(null)
-    const fiberRef = useRef<Fiber.Fiber<void, unknown> | null>(null)
+    const fiberRef = useRef<Fiber.Fiber<void, E> | null>(null)
     // Buffer messages dispatched before the program is installed (e.g. from a
     // child's mount effect) instead of dropping them into a no-op. Bounded so a
     // component that never mounts its effect cannot grow it without limit.
     const pendingRef = useRef<Msg[]>([])
-    const bufferRef = useRef<Platform.Dispatch<Msg>>((msg) => {
+    const dispatchRef = useRef<Platform.Dispatch<Msg>>((msg) => {
       if (pendingRef.current.length < 1024) pendingRef.current.push(msg)
     })
-    const dispatchRef = useRef<Platform.Dispatch<Msg>>(bufferRef.current)
 
     // Latest-ref for update/subscriptions so the once-started program always
     // calls the current closures (matching React useReducer), not first-render ones.
@@ -278,9 +259,7 @@ export const makeUseProgram = (React: ReactLike) => {
       // Guards against a torn-down program's fibers writing React state after
       // cleanup (StrictMode remount shares this component's setModel).
       let active = true
-      // Re-arm: StrictMode's cleanup left a no-op, and a ManagedRuntime may still be building.
-      dispatchRef.current = bufferRef.current
-      const fork = forkWith(options.runtime)
+      const runtime = options.runtime ?? Context.empty() as Context.Context<R>
 
       const setup = Effect.scoped(
         Effect.gen(function* () {
@@ -289,8 +268,6 @@ export const makeUseProgram = (React: ReactLike) => {
             (msg, m) => updateRef.current(msg, m),
             (m) => subscriptionsRef.current(m)
           )
-          // Stops dispatch whenever this fiber ends: unmount, runtime.dispose(), failure.
-          yield* Effect.addFinalizer(() => prog.shutdown)
 
           programRef.current = prog
           dispatchRef.current = prog.dispatch
@@ -308,7 +285,7 @@ export const makeUseProgram = (React: ReactLike) => {
         })
       )
 
-      const fiber = fork(setup as Effect.Effect<void, E, R>)
+      const fiber = Effect.runForkWith(runtime)(setup as Effect.Effect<void, E, R>)
       fiberRef.current = fiber
 
       return () => {
@@ -317,12 +294,11 @@ export const makeUseProgram = (React: ReactLike) => {
         // buffer here: a permanent unmount with a retained dispatch reference
         // would otherwise accumulate messages without bound.
         dispatchRef.current = () => {}
-        // Plain runFork: no services needed, and a disposed ManagedRuntime would refuse it.
         if (programRef.current) {
-          Effect.runFork(programRef.current.shutdown)
+          Effect.runForkWith(runtime)(programRef.current.shutdown)
         }
         if (fiberRef.current) {
-          Effect.runFork(Fiber.interrupt(fiberRef.current))
+          Effect.runForkWith(runtime)(Fiber.interrupt(fiberRef.current))
         }
       }
     }, [])
@@ -349,7 +325,7 @@ export const makeUseProgramWithLayer = (React: ReactLike) => {
     init: readonly [Model, Cmd<Msg, E, R>],
     update: (msg: Msg, model: Model) => readonly [Model, Cmd<Msg, E, R>],
     subscriptions: (model: Model) => Sub<Msg, E, R> = () => subNone,
-    runtime: ProgramRuntime<R>
+    runtime: Context.Context<R>
   ): UseProgramResult<Model, Msg> => {
     return baseUseProgram(init, update, subscriptions, { runtime })
   }

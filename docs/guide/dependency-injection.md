@@ -53,7 +53,7 @@ view function, unchanged by any of this - it is in the full file below.)
 
 ### A program inside a React component
 
-`useProgram` wants a `ManagedRuntime`, not a `Layer`:
+`useProgram` wants a `Context`, not a `Layer`:
 
 <<< @/examples/di/main.tsx#hook
 
@@ -64,17 +64,11 @@ a missing argument on a hook that used to take two, this is why: something in
 your command tree started requiring a service.
 :::
 
-::: tip Synchronous and asynchronous layers
-Pass the `ManagedRuntime` itself. It builds its layer the first time it is used,
-so a layer that opens a connection, reads configuration, or acquires any resource
-needs nothing extra. Messages dispatched before the layer is ready are buffered,
-and applied once the program starts. If the layer fails to build, the program
-never starts and the hook does not report the error, so recover inside the layer
-(for example with `Layer.catch`).
-
-`runtime` also accepts a `Context` you already hold, such as the result of
-`await AppRuntime.context()`. Both forms are the `ProgramRuntime<R>` type,
-exported from `tea-effect/React`.
+::: warning Synchronous versus asynchronous layers
+`Effect.runSync(AppRuntime.contextEffect)` works because `Layer.succeed` builds
+synchronously. A layer that opens a connection, reads configuration, or acquires
+any resource cannot be built that way - use `await AppRuntime.context()`, which is
+a Promise, and hold the result in state while it resolves.
 :::
 
 ::: details The complete file, imports included
