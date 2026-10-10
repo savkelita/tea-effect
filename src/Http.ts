@@ -4,7 +4,7 @@
  * Inspired by [Elm's Http module](https://package.elm-lang.org/packages/elm/http/latest/Http)
  * and [gcanti's elm-ts](https://github.com/gcanti/elm-ts).
  *
- * Uses `effect/unstable/http` for HTTP and `Schema` for encoding/decoding.
+ * Uses `effect/http` for HTTP and `Schema` for encoding/decoding.
  *
  * @example
  * ```ts
@@ -34,7 +34,7 @@
  * @since 0.2.0
  */
 import { Context, Effect, Schema, Duration, Stream } from 'effect'
-import { FetchHttpClient, HttpClient, HttpClientError, HttpClientRequest } from 'effect/unstable/http'
+import { FetchHttpClient, HttpClient, HttpClientError, HttpClientRequest } from 'effect/http'
 import type { Cmd } from './Cmd'
 import type { Task } from './Task'
 
@@ -562,7 +562,7 @@ const mapHttpClientError = (error: HttpClientError.HttpClientError): HttpError =
  * @example
  * ```ts
  * import { Effect, Layer, Schema } from 'effect'
- * import { HttpClient } from 'effect/unstable/http'
+ * import { HttpClient } from 'effect/http'
  * import * as Http from 'tea-effect/Http'
  *
  * const User = Schema.Struct({ id: Schema.Number, name: Schema.String })

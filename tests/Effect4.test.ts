@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { Deferred, Effect, Exit, Fiber, Layer, Stream } from 'effect'
-import { HttpClient, HttpClientError } from 'effect/unstable/http'
+import { HttpClient, HttpClientError } from 'effect/http'
 import * as Cmd from '../src/Cmd'
 import * as Sub from '../src/Sub'
 import * as Http from '../src/Http'
