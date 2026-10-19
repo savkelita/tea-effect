@@ -154,4 +154,26 @@ describe('synchronous dispatch', () => {
         }),
       ),
     ))
+
+  // Applied nested, the inner message updated the model the outer update had read, and
+  // the outer update then overwrote it.
+  it('should keep the change of a message dispatched from inside update', () =>
+    Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          let dispatch: Platform.Dispatch<'outer' | 'inner'> = () => {}
+          const prog = yield* Platform.program<ReadonlyArray<string>, 'outer' | 'inner'>([[], Cmd.none], (msg, log) => {
+            if (msg === 'outer') dispatch('inner')
+            return [[...log, msg], Cmd.none]
+          })
+          dispatch = prog.dispatch
+
+          prog.dispatch('outer')
+
+          const seen: Array<ReadonlyArray<string>> = []
+          prog.subscribe(log => void seen.push(log))
+          expect(seen).toEqual([['outer', 'inner']])
+        }),
+      ),
+    ))
 })

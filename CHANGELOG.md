@@ -41,8 +41,10 @@ Requires Effect 4.0 (`effect` `~4.0.0`).
 - Dependency injection: Effect 4 services are `Context.Service` - `class ApiClient extends Context.Service<ApiClient, Shape>()('ApiClient') {}` in place of `Context.Tag('ApiClient')<ApiClient, Shape>() {}`, which Effect 4 does not have. `Layer.succeed(ApiClient, impl)` and `yield* ApiClient` work as before, and the dependency-injection example is updated
 - Testing: in Effect 4, `Stream.runCollect(cmd)` returns a plain array, so `Chunk.toArray` / `Chunk.toReadonlyArray` can be dropped; a program built into an explicit scope uses `Scope.provide(scope)` instead of `Scope.extend(scope)`; and `Effect.fork` is `Effect.forkChild`. tea-effect's own API for these is unchanged
 
+## [0.8.4] - 2026-10-19
+
 ### Fixed
-- Platform: a `dispatch` made while a message is being applied - from a `subscribe` listener, a `model$` consumer, `update` itself or a Cmd body that runs inside `dispatch` - is now queued and applied after the current step, before the outer `dispatch` returns. In 0.8.3 it ran nested, so after a listener dispatched, a later listener received the newer model first and then the older one, and ended on a stale model
+- Platform: a `dispatch` made while a message is being applied - from a `subscribe` listener or from `update` itself - is now queued and applied after the current step, before the outer `dispatch` returns. In 0.8.3 it ran nested, so after a listener dispatched, a later listener received the newer model first and then the older one, and ended on a stale model
 - Platform: a `dispatch` from inside `update` no longer loses its model change. In 0.8.3 it ran nested, and the outer `update` then overwrote the model the nested message had produced
 - Platform: a `subscribe` listener that throws no longer stops the other listeners or the step's Cmd: the remaining listeners still receive the model and the Cmd still starts. The error still surfaces on `model$` as a defect, and `dispatch` does not throw. In 0.8.3 the remaining listeners were skipped and the Cmd never ran
 
