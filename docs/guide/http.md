@@ -9,11 +9,7 @@ Nothing below is a stand-in.
 
 ## Install
 
-`Http` is the one module with an extra peer dependency:
-
-```sh
-npm install @effect/platform
-```
+`Http` needs no extra package: it uses the HTTP client that ships inside `effect`.
 
 No client configuration is needed - `Http.send` and `Http.toTask` provide
 Effect's `FetchHttpClient` themselves.

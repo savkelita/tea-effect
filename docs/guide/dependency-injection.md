@@ -10,7 +10,7 @@ its type, and the program does not compile until something provides one.
 
 ## Declaring a service
 
-A service is a tag plus the shape behind it. Nothing here says *how* the data is
+A service is a key plus the shape behind it. Nothing here says *how* the data is
 fetched - only what a feature is allowed to ask for:
 
 <<< @/examples/di/ApiClient.ts#service
@@ -22,7 +22,7 @@ fetched - only what a feature is allowed to ask for:
 That is the real JSONPlaceholder request from the [HTTP guide](/guide/http),
 moved behind the service. The feature no longer knows *which* request is made or
 how the client is built - though here it still speaks the transport's error
-type, because the tag's error channel is `Http.HttpError`. Give the service an
+type, because the service's error channel is `Http.HttpError`. Give the service an
 error type of its own, and map `HttpError` into it inside `ApiClientLive`, if you
 want the feature independent of the transport as well.
 
@@ -53,7 +53,7 @@ view function, unchanged by any of this - it is in the full file below.)
 
 ### A program inside a React component
 
-`useProgram` wants a `Runtime`, not a `Layer`:
+`useProgram` wants a `Context`, not a `Layer`:
 
 <<< @/examples/di/main.tsx#hook
 
@@ -65,10 +65,10 @@ your command tree started requiring a service.
 :::
 
 ::: warning Synchronous versus asynchronous layers
-`Effect.runSync(AppRuntime)` works because `Layer.succeed` builds synchronously.
-A layer that opens a connection, reads configuration, or acquires any resource
-cannot be built that way - use `await AppRuntime.runtime()`, which is a Promise,
-and hold the result in state while it resolves.
+`Effect.runSync(AppRuntime.contextEffect)` works because `Layer.succeed` builds
+synchronously. A layer that opens a connection, reads configuration, or acquires
+any resource cannot be built that way - use `await AppRuntime.context()`, which is
+a Promise, and hold the result in state while it resolves.
 :::
 
 ::: details The complete file, imports included
@@ -81,7 +81,7 @@ Swapping the implementation is swapping a value:
 
 <<< @/examples/di/ApiClient.ts#test
 
-No mocking library, no module interception, no reset between tests. The same tag,
+No mocking library, no module interception, no reset between tests. The same key,
 a different value behind it - and the compiler checks that the substitute has the
 right shape.
 

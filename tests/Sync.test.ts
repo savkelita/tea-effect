@@ -126,7 +126,7 @@ describe('synchronous dispatch', () => {
           prog.dispatch('go')
 
           expect(log).toEqual(['model 1', 'cmd'])
-          const failure = yield* Effect.flip(Effect.catchAllDefect(Stream.runDrain(prog.model$), defect => Effect.fail(defect)))
+          const failure = yield* Effect.flip(Effect.catchDefect(Stream.runDrain(prog.model$), defect => Effect.fail(defect)))
           expect(String(failure)).toContain('listener')
         }),
       ),

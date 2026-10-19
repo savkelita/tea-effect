@@ -20,14 +20,15 @@ A spiritual successor to [elm-ts](https://github.com/gcanti/elm-ts), replacing f
 npm install tea-effect effect
 ```
 
-`effect` is a peer dependency. Two more are declared optional, because only one module each depends on them:
+`effect` is a peer dependency - tea-effect needs Effect 4. `react` is declared optional, because only `tea-effect/React` depends on it:
 
 ```sh
-npm install @effect/platform   # tea-effect/Http needs this
 npm install react react-dom    # tea-effect/React needs these
 ```
 
-Note that the root entry re-exports every module, `Http` included, so `import { Cmd } from "tea-effect"` pulls `@effect/platform` in anyway. Import the subpath - `tea-effect/Cmd` - to keep it out.
+`tea-effect/Http` uses the HTTP client that ships inside `effect`, so it needs no extra package.
+
+The package is ESM only, like Effect 4. `require("tea-effect")` works only on Node versions that can `require()` an ES module - the ones listed under [Requirements](#requirements).
 
 ## Differences from elm-ts
 
@@ -268,8 +269,8 @@ export const view =
 
 ## Requirements
 
-- Node.js 18+
-- TypeScript 5.3+
+- Node.js `^20.19.0 || >=22.12.0`
+- TypeScript 5.9+ (required by Effect 4)
 - tsconfig.json:
 
 ```json
@@ -278,7 +279,7 @@ export const view =
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "lib": ["ES2022", "DOM"],
+    "lib": ["ES2022", "DOM", "ESNext.Disposable"],
     "strict": true,
     "exactOptionalPropertyTypes": true,
     "jsx": "react-jsx"
@@ -286,7 +287,7 @@ export const view =
 }
 ```
 
-`moduleResolution` has to be `bundler`, `node16` or `nodenext` - the `node10` default ignores the package's `exports` map, and the `tea-effect/X` subpath imports above will not resolve. `jsx` is only needed if you write views in JSX.
+`ESNext.Disposable` is there because Effect 4's type declarations use `Disposable` and `Symbol.asyncDispose`. Without it, TypeScript reports errors inside `effect` unless `skipLibCheck` is on. `moduleResolution` has to be `bundler`, `nodenext` or `node16`. The last two also need `module` changed from `ESNext`, for example to `nodenext`, and `node16` works only from ES module files. `node10` ignores the packages' `exports` maps, so neither `effect` nor the `tea-effect/X` subpath imports above will resolve. `jsx` is only needed if you write views in JSX.
 
 ## Examples
 

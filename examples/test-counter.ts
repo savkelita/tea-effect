@@ -15,7 +15,7 @@ const main = Effect.gen(function* () {
     program.model$,
     Stream.tap((model) => Effect.sync(() => console.log(`Count: ${model.count}`))),
     Stream.runDrain,
-    Effect.fork
+    Effect.forkChild
   )
 
   yield* Effect.sleep('50 millis')

@@ -110,7 +110,7 @@ The constructors you will use most:
 | | |
 | --- | --- |
 | `Cmd.none` | Do nothing. |
-| `Cmd.of(msg)` | Dispatch a message immediately. |
+| `Cmd.of(msg)` | Produce `msg` without doing any work. Like any command's message, it is applied after the current `dispatch` returns. |
 | `Cmd.fromEffect(effect)` | Turn any `Effect` producing a message into a command. |
 | `Task.perform(f)(task)` | Run a task that cannot fail, map its result to a message. |
 | `Task.attemptWith({ onSuccess, onFailure })(task)` | Run a task that can fail, map both outcomes to messages. |
@@ -161,7 +161,7 @@ Worth knowing, because it explains behaviour you would otherwise find surprising
 
 **`dispatch` is synchronous.** When your click handler calls `dispatch`, `update`
 runs and the renderer is called *before `dispatch` returns*, inside the same DOM
-event.
+event. The command `update` returned is started there too, after the renderer.
 
 This is deliberate. A renderer driving controlled inputs cannot afford a delay:
 if the model arrived one tick late, the browser would already hold the newly
@@ -169,26 +169,43 @@ typed character while the view still carried the previous value, and the
 reconciler would write the stale value back - moving the caret and clearing the
 field's native undo history.
 
+**A `dispatch` made while a message is being applied waits its turn.** A
+listener, `update` itself, or a `model$` consumer that receives its value inside
+`dispatch` may call `dispatch`. That message is queued and applied right after
+the current one, still before the outer `dispatch` returns. Every listener sees
+the models in the order they were produced.
+
 **Messages from commands and subscriptions are serialized.** They arrive on
 fibers, so they pass through an internal queue first, and the queue guarantees
 they are applied one at a time and never interleave. It is not a batching or
-debouncing layer, but it *is* a fiber hop: a command's message is applied on a
-later turn of the scheduler, not inside the `dispatch` that returned the
-command. Once taken off the queue it goes through the same synchronous path a
-`dispatch` from the view takes.
+debouncing layer, but it *is* a fiber hop. When the fiber reading the queue is
+waiting, Effect's scheduler resumes it on a macrotask - `setTimeout(0)` in
+browsers, `setImmediate` in Node - so a command's message is applied at least
+one macrotask after the `dispatch` that returned the command, never inside it.
+A program built inside `Effect.runSync` keeps that call's microtask scheduler
+instead: its command messages are still applied after `dispatch` returns, but
+without waiting for a macrotask.
+A message that arrives while that fiber is still applying an earlier one - for
+example from a `Cmd.of` returned for a command's message - can be applied right
+after it, in the same macrotask. Once taken off the queue it goes through the
+same synchronous path a `dispatch` from the view takes.
 
 **Two ways to observe the model.** `Program.subscribe(listener)` is the
 synchronous path described above, and it is what `React.run` and
 `Html.runWith` render through. `Program.model$` is an Effect `Stream` carrying
-the same values, consumed on a fiber, so it lands a tick later. Use `model$` for
-logging, devtools, or anything that composes with other streams; use `subscribe`
-for rendering.
+the same values, consumed on a fiber. A value can reach that fiber inside
+`dispatch`, even before the `subscribe` listeners run, or after `dispatch`
+returns. Which one depends on what the fiber is doing at the time, so do not
+rely on either. `Platform.run`, `Platform.runWith` and `Html.run` are built on
+`model$` and behave the same way. Use `model$` for logging, devtools, or
+anything that composes with other streams; use `subscribe` for rendering.
 
-::: warning `makeUseProgram` is still on the delayed path
+::: warning `makeUseProgram` is not on the synchronous path
 The React hook pushes the model into React state from `model$`, not from
-`subscribe`, so a re-render driven by the hook lands a tick after `dispatch`
-returns. For controlled text inputs that is exactly the delay described above -
-mount through `React.run` until the hook moves over.
+`subscribe`, so it has the same timing: the state update may happen inside
+`dispatch` or after it returns. For controlled text inputs a late update is
+exactly the delay described above - mount through `React.run` until the hook
+moves over.
 :::
 
 ## Where errors go

@@ -194,10 +194,8 @@ export const getLocation = (): Location => {
 }
 
 // A programmatic pushUrl/replaceUrl notifies urlChanges by dispatching a
-// synthetic popstate. It is deferred to a macrotask so that a navigation issued
-// from init's Cmd is delivered even though the urlChanges listener registers
-// slightly after the initial Cmd runs. (No module-global state, so nothing
-// leaks between program instances.)
+// synthetic popstate, deferred to a macrotask. (No module-global state, so
+// nothing leaks between program instances.)
 const notifyUrlChange = (): void => {
   // Snapshot the location now (right after this pushState), so a burst of
   // navigations in one macrotask each delivers its own URL rather than every
@@ -243,7 +241,7 @@ const notifyUrlChange = (): void => {
  * @category Commands
  */
 export const pushUrl = <Msg = never>(url: string, state: unknown = null): Cmd<Msg> =>
-  Stream.execute(
+  Stream.fromEffectDrain(
     Effect.sync(() => {
       if (typeof window !== 'undefined') {
         window.history.pushState(state, '', url)
@@ -271,7 +269,7 @@ export const pushUrl = <Msg = never>(url: string, state: unknown = null): Cmd<Ms
  * @category Commands
  */
 export const replaceUrl = <Msg = never>(url: string, state: unknown = null): Cmd<Msg> =>
-  Stream.execute(
+  Stream.fromEffectDrain(
     Effect.sync(() => {
       if (typeof window !== 'undefined') {
         window.history.replaceState(state, '', url)
@@ -300,7 +298,7 @@ export const replaceUrl = <Msg = never>(url: string, state: unknown = null): Cmd
  * @category Commands
  */
 export const back = <Msg = never>(steps: number): Cmd<Msg> =>
-  Stream.execute(
+  Stream.fromEffectDrain(
     Effect.sync(() => {
       if (typeof window !== 'undefined') {
         window.history.go(-steps)
@@ -325,7 +323,7 @@ export const back = <Msg = never>(steps: number): Cmd<Msg> =>
  * @category Commands
  */
 export const forward = <Msg = never>(steps: number): Cmd<Msg> =>
-  Stream.execute(
+  Stream.fromEffectDrain(
     Effect.sync(() => {
       if (typeof window !== 'undefined') {
         window.history.go(steps)
@@ -360,7 +358,7 @@ export const forward = <Msg = never>(steps: number): Cmd<Msg> =>
  * @category Commands
  */
 export const load = <Msg = never>(url: string): Cmd<Msg> =>
-  Stream.execute(
+  Stream.fromEffectDrain(
     Effect.sync(() => {
       if (typeof window !== 'undefined') {
         window.location.href = url
@@ -374,7 +372,7 @@ export const load = <Msg = never>(url: string): Cmd<Msg> =>
  * @since 0.5.0
  * @category Commands
  */
-export const reload: Cmd<never> = Stream.execute(
+export const reload: Cmd<never> = Stream.fromEffectDrain(
   Effect.sync(() => {
     if (typeof window !== 'undefined') {
       window.location.reload()

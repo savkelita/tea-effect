@@ -309,13 +309,13 @@ describe('Platform', () => {
             // observable that distinguishes the fix from main.
             const scope = yield* Scope.make()
             let beats = 0
-            const infiniteCmd = Stream.repeatEffect(
+            const infiniteCmd = Stream.fromEffectRepeat(
               Effect.sync(() => { beats++; return { type: 'Beat' as const } })
             ).pipe(Stream.schedule(Schedule.spaced('20 millis')))
             const prog = yield* Platform.program<{ n: number }, { type: 'Beat' } | { type: 'Inc' }>(
               [{ n: 0 }, infiniteCmd],
               (_m, m) => [{ n: m.n + 1 }, Cmd.none]
-            ).pipe(Scope.extend(scope))
+            ).pipe(Scope.provide(scope))
             yield* Effect.forkScoped(Stream.runDrain(prog.model$))
 
             yield* Effect.sleep('120 millis')

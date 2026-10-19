@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { Option, Schema } from 'effect'
+import { Effect, Option, Schema, SchemaTransformation } from 'effect'
 import * as Router from '../src/Router'
 import { Route } from '../src/Router/Route'
 import * as Parser from '../src/Router/Parser'
@@ -158,7 +158,7 @@ describe('Router', () => {
       it('should handle array query parameters', () => {
         const parser = Parser.query(
           Schema.Struct({
-            tags: Schema.Union(Schema.String, Schema.Array(Schema.String))
+            tags: Schema.Union([Schema.String, Schema.Array(Schema.String)])
           })
         )
         const route = Route.parse('/', '?tags=a&tags=b')
@@ -411,7 +411,7 @@ describe('Router', () => {
         user: Router.path('/users/:id', { id: Schema.NumberFromString }).query(
           Schema.Struct({
             tab: Schema.String,
-            page: Schema.optionalWith(Schema.NumberFromString, { default: () => 1 })
+            page: Schema.NumberFromString.pipe(Schema.withDecodingDefaultType(Effect.succeed(1)))
           })
         )
       })
@@ -423,7 +423,7 @@ describe('Router', () => {
 
     it('#20: Record query schema does not drop query params', () => {
       const routes = Router.routes({
-        search: Router.path('/search').query(Schema.Record({ key: Schema.String, value: Schema.String }))
+        search: Router.path('/search').query(Schema.Record(Schema.String, Schema.String))
       })
       const url = Router.format(routes.search, { q: 'hello', page: '2' } as any)
       expect(url).toContain('q=hello')
@@ -431,10 +431,15 @@ describe('Router', () => {
     })
 
     it('#21: path and query params format through the schema encoder (round-trip)', () => {
-      const Hex = Schema.transform(Schema.String, Schema.Number, {
-        decode: (s) => parseInt(s, 16),
-        encode: (n) => n.toString(16)
-      })
+      const Hex = Schema.String.pipe(
+        Schema.decodeTo(
+          Schema.Number,
+          SchemaTransformation.transform({
+            decode: (s: string) => parseInt(s, 16),
+            encode: (n: number) => n.toString(16)
+          })
+        )
+      )
       const routes = Router.routes({
         item: Router.path('/item/:id', { id: Hex }).query(Schema.Struct({ n: Hex }))
       })
@@ -487,7 +492,7 @@ describe('Router', () => {
     it('review-#11: format stays total when a required/default query field is omitted', () => {
       const routes = Router.routes({
         user: Router.path('/users/:id', { id: Schema.NumberFromString }).query(
-          Schema.Struct({ tab: Schema.String, page: Schema.optionalWith(Schema.NumberFromString, { default: () => 1 }) })
+          Schema.Struct({ tab: Schema.String, page: Schema.NumberFromString.pipe(Schema.withDecodingDefaultType(Effect.succeed(1))) })
         )
       })
       expect(() => Router.format(routes.user, { id: 7, tab: 'posts' } as any)).not.toThrow()
