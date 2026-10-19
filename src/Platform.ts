@@ -158,22 +158,45 @@ export const program = <Model, Msg, E = never, R = never>(
 
     // The single path every message takes, whether it came from the view, a command or a
     // subscription. Synchronous on purpose - see `subscribe` on the Program interface.
+    const step = (msg: Msg): Effect.Effect<void, never, R> =>
+      pipe(
+        Effect.gen(function* () {
+          const currentModel = yield* SubscriptionRef.get(modelRef)
+          const [newModel, cmd] = update(msg, currentModel)
+          yield* SubscriptionRef.set(modelRef, newModel)
+          const failures: Array<unknown> = []
+          yield* Effect.sync(() => {
+            for (const listener of listeners) {
+              try {
+                listener(newModel)
+              } catch (error) {
+                failures.push(error)
+              }
+            }
+          })
+          yield* processCmd(cmd)
+          if (failures.length > 0) yield* Effect.die(failures[0])
+        }),
+        Effect.catchAllCause(surfaceCause)
+      )
+
+    // A dispatch made during a step (from a listener or from `update`) runs right after that step.
+    let handling = false
+    const pending: Array<Msg> = []
     const handle = (msg: Msg): void => {
       if (stopped) return
-      runNow(
-        pipe(
-          Effect.gen(function* () {
-            const currentModel = yield* SubscriptionRef.get(modelRef)
-            const [newModel, cmd] = update(msg, currentModel)
-            yield* SubscriptionRef.set(modelRef, newModel)
-            yield* Effect.sync(() => {
-              for (const listener of listeners) listener(newModel)
-            })
-            yield* processCmd(cmd)
-          }),
-          Effect.catchAllCause(surfaceCause)
-        )
-      )
+      if (handling) {
+        pending.push(msg)
+        return
+      }
+      handling = true
+      try {
+        runNow(step(msg))
+        while (pending.length > 0 && !stopped) runNow(step(pending.shift()!))
+      } finally {
+        handling = false
+        pending.length = 0
+      }
     }
 
     const dispatch: Dispatch<Msg> = handle

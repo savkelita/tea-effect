@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- Platform: a `dispatch` made while a message is being applied - from a `subscribe` listener or from `update` itself - is now queued and applied after the current step, before the outer `dispatch` returns. In 0.8.3 it ran nested, so after a listener dispatched, a later listener received the newer model first and then the older one, and ended on a stale model
+- Platform: a `dispatch` from inside `update` no longer loses its model change. In 0.8.3 it ran nested, and the outer `update` then overwrote the model the nested message had produced
+- Platform: a `subscribe` listener that throws no longer stops the other listeners or the step's Cmd: the remaining listeners still receive the model and the Cmd still starts. The error still surfaces on `model$` as a defect, and `dispatch` does not throw. In 0.8.3 the remaining listeners were skipped and the Cmd never ran
+
 ## [0.8.3] - 2026-08-24
 
 ### Fixed
