@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.8.4] - 2026-10-19
 
 ### Fixed
 - Platform: a `dispatch` made while a message is being applied - from a `subscribe` listener or from `update` itself - is now queued and applied after the current step, before the outer `dispatch` returns. In 0.8.3 it ran nested, so after a listener dispatched, a later listener received the newer model first and then the older one, and ended on a stale model
