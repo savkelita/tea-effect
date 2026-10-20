@@ -5,9 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.10.0] - 2026-10-20
 
 ### Added
+
 - Http: `expectFile` reads the response body as bytes and gives a `File`. Its name comes from `Content-Disposition`: `filename*` (RFC 8187, `UTF-8` or `ISO-8859-1`) before `filename`, quoted or not. A raw UTF-8 `filename`, which fetch hands over byte for byte and so arrives as Latin-1, is decoded back when it is valid UTF-8. Only the base name is kept, so `../../x.pdf` is saved as `x.pdf`. Without the header the name is the last segment of the URL, and `download` when there is none. The type is the response's `Content-Type`. A status outside 2xx is still `BadStatus` with the body as text, as with every other expectation, so a server can answer a failed export with its usual JSON errors
 - File: a new module, `tea-effect/File`, after Elm's `elm/file`. `File.File` is the browser's `File`. `File.toText`, `File.toBytes` (a `Uint8Array<ArrayBuffer>`) and `File.toDataUrl` read it as Tasks that fail with a `ReadError`; interrupting `toDataUrl` aborts the read. The root `tea-effect` entry re-exports the module as `File`
 - File.Select: `file(accept, toMsg)` and `files(accept, toMsg)` ask the user for one file or several, through a hidden `<input type="file">` that stays in the document while the picker is open. `files` hands `toMsg` a non-empty array. Dismissing the picker sends no message where the browser fires `cancel`; where it does not, the command stays pending. Browsers open the picker only in response to a user action, so the command belongs in the `update` branch for that click
@@ -16,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - package.json: a `./File` export, which `smoke:dist` loads like the others
 
 ### Changed
+
 - Http: `Expect<A>` has a third case, `{ _tag: 'ExpectFile'; decoder }`, and `Body` four more - `StringBody`, `BytesBody`, `FileBody` and `MultipartBody`, the last holding the new `Part` type. A `switch` over `Expect._tag` or `Body._tag` that is checked for exhaustiveness has to handle them
 - Http: the request body is now set after the request's headers for every kind of body, as the JSON body already was, so the body decides `Content-Type`. A JSON body is still `application/json`, and a request without a body still keeps a `Content-Type` header set by hand
 
@@ -24,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Requires Effect 4.0 (`effect` `~4.0.0`).
 
 ### Breaking
+
 - package.json: the `effect` peer dependency is `~4.0.0` (was `^3.19.15`). Every Effect type in tea-effect's API is now Effect 4's, so application code has to be ported to Effect 4 as well. The range stops at 4.0.x because the `effect/http` modules that `Http` imports are marked `@stability unstable` in Effect 4.0
 - package.json: the package is ESM only. It has `"type": "module"`, every `exports` entry is `{ types, default }` pointing at an ESM `dist/*.js`, and the CommonJS build, the `.mjs` files and the `module` field are gone; `main` still points at `./dist/index.js`, which is now ESM. `import` works on every Node version tested. `require('tea-effect')` and `require('tea-effect/X')` work only through Node's `require(esm)`: they load on 20.19.0, 22.12.0 (with an `ExperimentalWarning`) and 24.11.0, and fail with `ERR_REQUIRE_ESM` on 18.20.8, 20.18.3 and 22.11.0. Effect 4 is ESM only itself
 - package.json: `engines.node` is `^20.19.0 || >=22.12.0` (was `>=18.0.0`). CI runs Node 20.19.0, 22.12.0 and 24.x (was 18.x, 20.x and 22.x) and adds a `smoke:dist` step, also run by `prepublishOnly`, that loads every export through both `import()` and `require()` and checks they return the same module instance
@@ -38,9 +41,11 @@ Requires Effect 4.0 (`effect` `~4.0.0`).
 - Router: `path`'s param schemas, `RouteBuilder.query`, `Parser.param` / `query` and `Matcher.param` / `query` take a `Schema.Codec<A, string>` / `Schema.Codec<Q, I>` (was `Schema.Schema`), and `ParamsFromSchemas` infers from `Codec`, so a value annotated `Schema.Schema<A>` is rejected. `IntFromString` is typed `Schema.Codec<number, string>` and accepts, rejects and formats exactly what it did in 0.8.3: it rejects `''`, `' '`, `'abc'`, `'NaN'`, `'Infinity'`, `'1.5'` and `'12abc'`
 
 ### Removed
+
 - package.json: `@effect/platform` is no longer a peer dependency (it was an optional `^0.94.0`). `Http` imports `FetchHttpClient`, `HttpClient`, `HttpClientError` and `HttpClientRequest` from `effect/http`, which ships inside `effect`, so `npm install @effect/platform` can be dropped. The root `tea-effect` entry no longer pulls in `@effect/platform`; it still re-exports `Http`, and a subpath import still keeps `Http`'s code out of the graph
 
 ### Changed
+
 - TypeScript: without `skipLibCheck`, the `lib: ["ES2022", "DOM"]` that the 0.8.3 docs recommended now reports three errors inside effect's declarations for any file that imports `effect` or a tea-effect module: TS2304 `AsyncDisposable` and `Disposable`, and TS2550 `asyncDispose`. Add `"ESNext.Disposable"` to `lib`, use `"ESNext"` in place of `"ES2022"`, use `target: "ESNext"` with no `lib`, or turn `skipLibCheck` on. `ES2023` and `ES2024` do not help. `DOM` is still required
 - Platform: on every step that changes the model, `subscriptions(model)` now runs inside `dispatch`, before that step's `subscribe` listeners, and new sources register (a `Sub.fromCallback`'s `register` runs) and removed ones are cleaned up there too. For `init` this all happens while `Platform.program` builds, before the init Cmd starts. In 0.8.3 it happened one or more microtasks later, so init subscriptions registered after the init Cmd had started, and an event the init Cmd fired could be missed. The model counts as changed when it is not `===` the previous one; 0.8.3 compared with Effect 3's `Equal.equals`, so a new `Data.struct` equal to the old model did not count
 - Platform: `model$` consumers - `Platform.run` / `runWith`, Html's `html$` and the React hook's `setModel` - can now receive a value synchronously inside `dispatch`, even before that step's `subscribe` listeners. In 0.8.3 it arrived only after `dispatch` had returned. When it arrives is not guaranteed, since it depends on the consuming fiber being idle; the only guaranteed synchronous path is still `Program.subscribe` / Html's `subscribeHtml`, which `React.run` and `Html.runWith` use
@@ -58,6 +63,7 @@ Requires Effect 4.0 (`effect` `~4.0.0`).
 ## [0.8.4] - 2026-10-19
 
 ### Fixed
+
 - Platform: a `dispatch` made while a message is being applied - from a `subscribe` listener or from `update` itself - is now queued and applied after the current step, before the outer `dispatch` returns. In 0.8.3 it ran nested, so after a listener dispatched, a later listener received the newer model first and then the older one, and ended on a stale model
 - Platform: a `dispatch` from inside `update` no longer loses its model change. In 0.8.3 it ran nested, and the outer `update` then overwrote the model the nested message had produced
 - Platform: a `subscribe` listener that throws no longer stops the other listeners or the step's Cmd: the remaining listeners still receive the model and the Cmd still starts. The error still surfaces on `model$` as a defect, and `dispatch` does not throw. In 0.8.3 the remaining listeners were skipped and the Cmd never ran
@@ -65,6 +71,7 @@ Requires Effect 4.0 (`effect` `~4.0.0`).
 ## [0.8.3] - 2026-08-24
 
 ### Fixed
+
 - Navigation: the `UrlRequest`, `linkClicks` and `program` examples handled an internal link with `pushUrl(location.pathname)`, which drops the query and the hash - a click on `/search?q=hello` navigated to `/search`. They now rebuild the URL from `pathname`, `search` and `hash`
 - Router: the `path`, `routes` and `RouteType` examples used `Schema.NumberFromString` for an `:id` param, which accepts `'NaN'`, `'Infinity'` and non-integers. `IntFromString` exists for exactly that reason, and the module's own Quick Start already used it
 - Router: the JSDoc for `ExtractParams` was attached to the private `ExtractParamsRooted` helper, leaving the exported type undocumented
@@ -76,6 +83,7 @@ Requires Effect 4.0 (`effect` `~4.0.0`).
 - index: the `Cmd` re-export's own description was never rendered. docgen attaches a file's leading comment to the first declaration in it, so the module overview took its place; the two are now one block
 
 ### Added
+
 - Documentation site built with VitePress: Why, Getting started, The mental model, HTTP, Routing, Dependency injection, Composition, Testing and Gotchas. Every runnable snippet is imported from a file under `docs/examples` that CI typechecks against `src`, so a signature change breaks the docs build. The "wrong / right" fragments in Gotchas and a few illustrative fences elsewhere are written inline on purpose and are not covered
 - `docs:api` runs `@effect/docgen`, which typechecks **and executes** every `@example` block against `src`. Every example now carries its own imports and compiles standalone; 56 of the first 60 failed the first time this ran
 - The Testing guide's examples are a real Vitest file run by `npm test`, so its claim that `dispatch` applies `update` before returning is a test rather than a statement
@@ -83,40 +91,49 @@ Requires Effect 4.0 (`effect` `~4.0.0`).
 - package.json: `homepage` and `bugs`
 
 ### Changed
+
 - Router: `Route` is re-exported as a `const` plus a matching `type` instead of `export { Route } from './Router/Route'`, because docgen cannot read JSDoc on a re-export. `Route.parse()`, `new Route()` and `Route` in type position are all unchanged, and the emitted declaration is equivalent
 
 ## [0.8.2] - 2026-08-21
 
 ### Fixed
+
 - Platform: `dispatch` now runs `update` and notifies the renderer synchronously, before it returns, instead of queueing the message for a fiber. elm-ts does the same (`state$.next(update(msg, state$.getValue()[0]))` on a `BehaviorSubject`); tea-effect had diverged, and that one-tick delay meant a renderer driving controlled DOM inputs still held the previous model while the browser had already accepted the keystroke - the reconciler wrote the stale value back, moving the caret and clearing the field native undo history
 
 ### Added
+
 - Platform: `Program.subscribe(listener)` observes the model synchronously and returns an unsubscribe function. `model$` is unchanged and still delivers the same values through a `Stream`
 - Html: `Program.subscribeHtml(renderer)` does the same for rendered views, and `runWith` now uses it, so the view reaches the renderer inside `dispatch`
 
 ### Changed
+
 - Platform: messages from commands and subscriptions still travel through the queue and stay serialized, but the queue no longer decides WHEN a message is applied
 
 ## [0.8.1] - 2026-08-20
 
 ### Fixed
+
 - Html: `map` caches the mapped dispatch per `(f, dispatch)` pair instead of allocating a new one on every render. A view is rebuilt each render, so the child used to receive a different dispatch every time and nothing below a `map` boundary could be memoised - `React.memo` never bailed out. Keep `f` a stable reference (a module-level message constructor); an inline arrow is a new cache key each render
 - Html: `map`'s doc said it maps the Dom type; it maps the messages
 
 ## [0.8.0] - 2026-08-20
 
 ### Breaking
+
 - Navigation: `Location` carries `state`, so every `Location` literal must supply it (`null` when there is none)
 
 ### Added
+
 - Navigation: `pushUrl(url, state?)` and `replaceUrl(url, state?)` store view state with the history entry; `getLocation` reads it back, and back/forward restore the state the browser kept for that entry
 
 ### Changed
+
 - Cmd: `map` gives back `none` itself, and `batch` drops `none` entries before merging, so "this branch does nothing" survives being wired through a parent
 
 ## [0.7.0] - 2026-07-13
 
 ### Breaking
+
 - Http: added `BadRequestBody` to `HttpError` (exhaustive `switch`es must add a case)
 - Http: `expectString` now reads the body as text; `Expect` is a discriminated union
 - Http: non-2xx statuses are `BadStatus`; `withCredentials` is now applied
@@ -125,9 +142,11 @@ Requires Effect 4.0 (`effect` `~4.0.0`).
 - Router: params only at segment start; format/parse now percent- and schema-encode
 
 ### Added
+
 - Router `IntFromString`; Sub `withKey`/`getSubEntries`/`SubEntry`; Http `badRequestBody`
 
 ### Fixed
+
 - ~40 audited defects across Platform, Sub, React, Http, Navigation, LocalStorage, Router
 
 ## [0.6.0] - 2025-02-04
