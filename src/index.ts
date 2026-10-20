@@ -57,6 +57,13 @@ export * as React from "./React";
 export * as Http from "./Http";
 
 /**
+ * Files: asking the user for them, reading them and saving them.
+ *
+ * @since 0.10.0
+ */
+export * as File from "./File";
+
+/**
  * Browser storage with Schema encoding and cross-tab change events.
  *
  * @since 0.3.0

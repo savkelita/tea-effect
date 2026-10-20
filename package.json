@@ -65,6 +65,10 @@
       "types": "./dist/Http.d.ts",
       "default": "./dist/Http.js"
     },
+    "./File": {
+      "types": "./dist/File.d.ts",
+      "default": "./dist/File.js"
+    },
     "./LocalStorage": {
       "types": "./dist/LocalStorage.d.ts",
       "default": "./dist/LocalStorage.js"

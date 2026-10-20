@@ -33,8 +33,9 @@
  *
  * @since 0.2.0
  */
-import { Context, Effect, Schema, Duration, Stream } from 'effect'
-import { FetchHttpClient, HttpClient, HttpClientError, HttpClientRequest } from 'effect/http'
+import { Context, Effect, Option, Schema, Duration, Stream, pipe } from 'effect'
+import { FetchHttpClient, HttpBody, HttpClient, HttpClientError, HttpClientRequest } from 'effect/http'
+import type { HttpClientResponse } from 'effect/http'
 import type { Cmd } from './Cmd'
 import type { Task } from './Task'
 
@@ -94,6 +95,7 @@ export interface Header {
 export type Expect<A> =
   | { readonly _tag: 'ExpectJson'; readonly decoder: Schema.Decoder<A> }
   | { readonly _tag: 'ExpectString'; readonly decoder: Schema.Decoder<A> }
+  | { readonly _tag: 'ExpectFile'; readonly decoder: Schema.Decoder<A> }
 
 /**
  * Request body with optional Schema encoder for runtime validation.
@@ -104,6 +106,21 @@ export type Expect<A> =
 export type Body =
   | { readonly _tag: 'EmptyBody' }
   | { readonly _tag: 'JsonBody'; readonly value: unknown; readonly encoder: Schema.Encoder<unknown> | undefined }
+  | { readonly _tag: 'StringBody'; readonly mime: string; readonly value: string }
+  | { readonly _tag: 'BytesBody'; readonly mime: string; readonly bytes: Uint8Array<ArrayBuffer> }
+  | { readonly _tag: 'FileBody'; readonly file: Blob }
+  | { readonly _tag: 'MultipartBody'; readonly parts: ReadonlyArray<Part> }
+
+/**
+ * One field of a multipart body.
+ *
+ * @since 0.10.0
+ * @category Model
+ */
+export type Part =
+  | { readonly _tag: 'StringPart'; readonly name: string; readonly value: string }
+  | { readonly _tag: 'FilePart'; readonly name: string; readonly file: Blob }
+  | { readonly _tag: 'BytesPart'; readonly name: string; readonly mime: string; readonly bytes: Uint8Array<ArrayBuffer> }
 
 /**
  * HTTP Request descriptor.
@@ -219,6 +236,38 @@ export const expectString: Expect<string> = {
  */
 export const expectWhatever: Expect<unknown> = expectJson(Schema.Unknown)
 
+const isFile = (u: unknown): u is File => typeof File !== 'undefined' && u instanceof File
+
+/**
+ * Expect a file: the response body as bytes, wrapped in a `File`.
+ *
+ * The name comes from `Content-Disposition` - `filename*` first, so a UTF-8 name
+ * such as `izveštaj.pdf` survives, then `filename` - and, when the header is
+ * missing, from the last segment of the URL. The type is the response's
+ * `Content-Type`.
+ *
+ * Errors do not change: a status outside 2xx is still `BadStatus` with the body
+ * as text, so a server can answer a failed export with its usual JSON errors.
+ *
+ * Hand the request to `File.Download.send` to save the file without it passing
+ * through a message.
+ *
+ * @example
+ * ```ts
+ * import * as Http from 'tea-effect/Http'
+ *
+ * const report = Http.get('/api/reports/42', Http.expectFile)
+ * // report: Http.Request<File>
+ * ```
+ *
+ * @since 0.10.0
+ * @category Expectations
+ */
+export const expectFile: Expect<File> = {
+  _tag: 'ExpectFile',
+  decoder: Schema.declare(isFile)
+}
+
 // -------------------------------------------------------------------------------------
 // body constructors
 // -------------------------------------------------------------------------------------
@@ -278,6 +327,111 @@ export const rawBody = <A>(value: A): Body => ({
   _tag: 'JsonBody',
   value,
   encoder: undefined
+})
+
+/**
+ * Text with the given MIME type as the body - CSV, XML or plain text, say.
+ *
+ * @example
+ * ```ts
+ * import * as Http from 'tea-effect/Http'
+ *
+ * const body = Http.stringBody('text/csv', 'id,name\n1,Ana\n')
+ * ```
+ *
+ * @since 0.10.0
+ * @category Body
+ */
+export const stringBody = (mime: string, value: string): Body => ({ _tag: 'StringBody', mime, value })
+
+/**
+ * Bytes with the given MIME type as the body.
+ *
+ * @example
+ * ```ts
+ * import * as Http from 'tea-effect/Http'
+ *
+ * const body = (pdf: Uint8Array<ArrayBuffer>) => Http.bytesBody('application/pdf', pdf)
+ * ```
+ *
+ * @since 0.10.0
+ * @category Body
+ */
+export const bytesBody = (mime: string, bytes: Uint8Array<ArrayBuffer>): Body => ({ _tag: 'BytesBody', mime, bytes })
+
+/**
+ * A file as the whole body - an upload the server reads as it is.
+ *
+ * `Content-Type` is the file's type, or `application/octet-stream` when the
+ * browser does not know it. The browser sends the file from disk, so it is
+ * never read into memory first.
+ *
+ * @example
+ * ```ts
+ * import { Schema } from 'effect'
+ * import * as Http from 'tea-effect/Http'
+ *
+ * const Report = Schema.Struct({ imported: Schema.Number })
+ *
+ * const importCsv = (csv: File) => Http.post('/api/devices/import', Http.fileBody(csv), Http.expectJson(Report))
+ * ```
+ *
+ * @since 0.10.0
+ * @category Body
+ */
+export const fileBody = (file: Blob): Body => ({ _tag: 'FileBody', file })
+
+/**
+ * A `multipart/form-data` body: files and fields in one request, the way an
+ * HTML form sends them.
+ *
+ * The browser sets `Content-Type` itself, because it has to carry the boundary
+ * between the parts; a `Content-Type` header set on the request is dropped.
+ *
+ * @example
+ * ```ts
+ * import * as Http from 'tea-effect/Http'
+ *
+ * const attach = (contract: File) =>
+ *   Http.post(
+ *     '/api/devices/7/attachments',
+ *     Http.multipartBody([Http.stringPart('description', 'Contract'), Http.filePart('file', contract)]),
+ *     Http.expectWhatever
+ *   )
+ * ```
+ *
+ * @since 0.10.0
+ * @category Body
+ */
+export const multipartBody = (parts: ReadonlyArray<Part>): Body => ({ _tag: 'MultipartBody', parts })
+
+/**
+ * A text field of a multipart body.
+ *
+ * @since 0.10.0
+ * @category Body
+ */
+export const stringPart = (name: string, value: string): Part => ({ _tag: 'StringPart', name, value })
+
+/**
+ * A file field of a multipart body, sent under the file's own name.
+ *
+ * @since 0.10.0
+ * @category Body
+ */
+export const filePart = (name: string, file: Blob): Part => ({ _tag: 'FilePart', name, file })
+
+/**
+ * Bytes with the given MIME type as a field of a multipart body.
+ *
+ * @since 0.10.0
+ * @category Body
+ */
+export const bytesPart = (name: string, mime: string, bytes: Uint8Array<ArrayBuffer>): Part => ({
+  _tag: 'BytesPart',
+  name,
+  mime,
+  bytes
 })
 
 // -------------------------------------------------------------------------------------
@@ -551,6 +705,136 @@ const mapHttpClientError = (error: HttpClientError.HttpClientError): HttpError =
   }
 }
 
+const EXTENDED_NAME = /(?:^|;)\s*filename\*\s*=\s*([^;]+)/i
+const QUOTED_NAME = /(?:^|;)\s*filename\s*=\s*"((?:[^"\\]|\\.)*)"/i
+const TOKEN_NAME = /(?:^|;)\s*filename\s*=\s*([^";]+)/i
+const DEFAULT_NAME = 'download'
+
+const decodeUri = Option.liftThrowable(decodeURIComponent)
+
+const decodeUtf8 = Option.liftThrowable((bytes: Uint8Array) => new TextDecoder('utf-8', { fatal: true }).decode(bytes))
+
+const isNonEmpty = (text: string): boolean => text !== ''
+
+const capture = (pattern: RegExp, text: string): Option.Option<string> => Option.fromNullishOr(pattern.exec(text)?.[1])
+
+const baseName = (name: string): string => name.split(/[\\/]/).pop()?.trim() ?? ''
+
+// `filename*=UTF-8''izve%C5%A1taj.pdf` (RFC 8187). Some servers quote it, which
+// the RFC does not allow; the quotes are dropped rather than rejecting the name.
+const fromExtended = (value: string): Option.Option<string> => {
+  const [charset = '', , encoded, ...rest] = value.trim().replace(/^"|"$/g, '').split("'")
+  if (encoded === undefined || rest.length > 0) return Option.none()
+  if (/^utf-8$/i.test(charset)) return decodeUri(encoded)
+  if (/^iso-8859-1$/i.test(charset)) {
+    return Option.some(encoded.replace(/%([0-9a-f]{2})/gi, (_, hex: string) => String.fromCharCode(parseInt(hex, 16))))
+  }
+  return Option.none()
+}
+
+// Fetch hands header values over byte for byte, so a server that writes a raw
+// UTF-8 name into `filename` arrives as Latin-1 mojibake. Decode it back when it
+// is valid UTF-8; a genuine Latin-1 name is not, and stays as it is.
+const fromHeaderBytes = (value: string): string =>
+  /[\u0080-ÿ]/.test(value) && !/[^\u0000-ÿ]/.test(value)
+    ? Option.getOrElse(decodeUtf8(Uint8Array.from(value, (char) => char.charCodeAt(0))), () => value)
+    : value
+
+const fromPlain = (header: string): Option.Option<string> =>
+  pipe(
+    capture(QUOTED_NAME, header),
+    Option.map((name) => name.replace(/\\(.)/g, '$1')),
+    Option.orElse(() => pipe(capture(TOKEN_NAME, header), Option.map((name) => name.trim()))),
+    Option.filter(isNonEmpty),
+    Option.map(fromHeaderBytes)
+  )
+
+const fromDisposition = (header: string): Option.Option<string> =>
+  pipe(
+    capture(EXTENDED_NAME, header),
+    Option.flatMap(fromExtended),
+    Option.filter(isNonEmpty),
+    Option.orElse(() => fromPlain(header))
+  )
+
+const fromUrl = (url: string): Option.Option<string> =>
+  pipe(
+    Option.fromNullishOr((url.split(/[?#]/)[0] ?? '').split('/').filter(isNonEmpty).pop()),
+    Option.map((segment) => Option.getOrElse(decodeUri(segment), () => segment))
+  )
+
+const fileName = (disposition: string | undefined, url: string): string =>
+  pipe(
+    Option.fromNullishOr(disposition),
+    Option.flatMap(fromDisposition),
+    Option.orElse(() => fromUrl(url)),
+    Option.map(baseName),
+    Option.filter(isNonEmpty),
+    Option.getOrElse(() => DEFAULT_NAME)
+  )
+
+const toFile = (bytes: ArrayBuffer, headers: Readonly<Record<string, string | undefined>>, url: string): File =>
+  new File([bytes], fileName(headers['content-disposition'], url), { type: headers['content-type'] ?? '' })
+
+const toFormData = (parts: ReadonlyArray<Part>): FormData => {
+  const form = new FormData()
+  for (const part of parts) {
+    switch (part._tag) {
+      case 'StringPart':
+        form.append(part.name, part.value)
+        break
+      case 'FilePart':
+        form.append(part.name, part.file)
+        break
+      case 'BytesPart':
+        form.append(part.name, new Blob([part.bytes], { type: part.mime }))
+        break
+    }
+  }
+  return form
+}
+
+// Encoding/serialization failures are request-side (no request is sent), so they
+// map to BadRequestBody rather than the response-side BadBody.
+const toHttpBody = (body: Exclude<Body, { readonly _tag: 'EmptyBody' }>): Effect.Effect<HttpBody.HttpBody, HttpError> => {
+  switch (body._tag) {
+    case 'JsonBody':
+      return pipe(
+        body.encoder === undefined ? Effect.succeed(body.value) : Schema.encodeUnknownEffect(body.encoder)(body.value),
+        Effect.flatMap((value) => HttpBody.json(value)),
+        Effect.mapError(badRequestBody)
+      )
+    case 'StringBody':
+      return Effect.succeed(HttpBody.text(body.value, body.mime))
+    case 'BytesBody':
+      return Effect.succeed(HttpBody.uint8Array(body.bytes, body.mime))
+    case 'FileBody':
+      return Effect.succeed(
+        HttpBody.raw(body.file, { contentType: body.file.type || 'application/octet-stream', contentLength: body.file.size })
+      )
+    case 'MultipartBody':
+      return Effect.sync(() => HttpBody.formData(toFormData(body.parts)))
+  }
+}
+
+const readBody = <A>(
+  expect: Expect<A>,
+  response: HttpClientResponse.HttpClientResponse,
+  url: string
+): Effect.Effect<unknown, HttpError> => {
+  switch (expect._tag) {
+    case 'ExpectJson':
+      return response.json.pipe(Effect.mapError(mapHttpClientError))
+    case 'ExpectString':
+      return response.text.pipe(Effect.mapError(mapHttpClientError))
+    case 'ExpectFile':
+      return response.arrayBuffer.pipe(
+        Effect.map((bytes) => toFile(bytes, response.headers, url)),
+        Effect.mapError(mapHttpClientError)
+      )
+  }
+}
+
 // -------------------------------------------------------------------------------------
 // execution
 // -------------------------------------------------------------------------------------
@@ -601,15 +885,10 @@ export const toTaskRaw = <A>(req: Request<A>): Task<A, HttpError, HttpClient.Htt
       httpReq = HttpClientRequest.setHeader(httpReq, h.name, h.value)
     }
 
-    // Add body for methods that support it
-    if (req.body._tag === 'JsonBody' && req.method !== 'GET' && req.method !== 'HEAD') {
-      // Encode body if encoder is provided. Encoding/serialization failures are
-      // request-side (no request is sent), so map them to BadRequestBody rather
-      // than the response-side BadBody.
-      const bodyValue = req.body.encoder
-        ? yield* Schema.encodeUnknownEffect(req.body.encoder)(req.body.value).pipe(Effect.mapError(badRequestBody))
-        : req.body.value
-      httpReq = yield* HttpClientRequest.bodyJson(httpReq, bodyValue).pipe(Effect.mapError(badRequestBody))
+    // Add the body for methods that support it. The body decides Content-Type,
+    // after the headers above, so a multipart body can drop one set by hand.
+    if (req.body._tag !== 'EmptyBody' && req.method !== 'GET' && req.method !== 'HEAD') {
+      httpReq = HttpClientRequest.setBody(httpReq, yield* toHttpBody(req.body))
     }
 
     // Execute request
@@ -622,10 +901,8 @@ export const toTaskRaw = <A>(req: Request<A>): Task<A, HttpError, HttpClient.Htt
       return yield* Effect.fail(badStatus(response.status, body))
     }
 
-    // Read the body as raw text for ExpectString, JSON otherwise, then decode.
-    const raw = req.expect._tag === 'ExpectString'
-      ? yield* response.text.pipe(Effect.mapError(mapHttpClientError))
-      : yield* response.json.pipe(Effect.mapError(mapHttpClientError))
+    // Read the body the way the expectation asks - JSON, raw text or a file - then decode.
+    const raw = yield* readBody(req.expect, response, req.url)
     return yield* Schema.decodeUnknownEffect(req.expect.decoder)(raw).pipe(Effect.mapError(badBody))
   })
 
