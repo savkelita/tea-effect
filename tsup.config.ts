@@ -11,6 +11,7 @@ export default defineConfig({
     'src/React.ts',
     'src/Navigation.ts',
     'src/Http.ts',
+    'src/File.ts',
     'src/LocalStorage.ts',
     'src/Router.ts',
   ],

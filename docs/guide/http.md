@@ -85,6 +85,49 @@ The two that get confused:
 <<< @/examples/http/Users.tsx
 :::
 
+## Downloading a file
+
+A file is a response like any other. Describe it with `Http.expectFile` and the
+body arrives as a `File`:
+
+<<< @/examples/http/api.ts#download
+
+The name comes from `Content-Disposition` - `filename*` first, so a UTF-8 name
+survives, then `filename` - and, without that header, from the last segment of
+the URL. The type is the response's `Content-Type`.
+
+To save it, hand the request to `File.Download.send`. The command fetches the
+file and saves it the way a download link would; `update` hears only its name:
+
+<<< @/examples/http/Export.ts#update
+
+The file never passes through a message, so the model and the message history
+stay small and serialisable. A failed request saves nothing and ends in
+`onError` with an ordinary `HttpError`, so a server can answer a failed export
+with the same JSON errors as any other route.
+
+## Uploading a file
+
+A file goes to the server as the body of the request - the whole body, or one
+part of a `multipart/form-data` form:
+
+<<< @/examples/http/api.ts#upload
+
+`Http.fileBody` sends the file from disk with the file's own `Content-Type`.
+`Http.multipartBody` takes `stringPart`, `filePart` and `bytesPart`; the browser
+writes its `Content-Type`, boundary included, so do not set that header
+yourself. For content the application built, `Http.stringBody` and
+`Http.bytesBody` take the MIME type explicitly.
+
+## Files from the user, and to the user
+
+The rest of `File` works the same way, after Elm's `elm/file`.
+`File.Download.text` and `File.Download.bytes` save content the application
+built itself, and `File.Download.url` lets the browser download a URL straight
+to disk. In the other direction, `File.Select.file` and `File.Select.files` ask
+the user for files, and `File.toText`, `File.toBytes` and `File.toDataUrl` read
+them.
+
 ## Choosing an entry point
 
 | | Provides the client | Use it for |

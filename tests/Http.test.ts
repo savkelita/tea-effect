@@ -48,6 +48,10 @@ describe('Http', () => {
     it('should have expectWhatever', () => {
       expect(Http.expectWhatever._tag).toBe('ExpectJson')
     })
+
+    it('should have expectFile', () => {
+      expect(Http.expectFile._tag).toBe('ExpectFile')
+    })
   })
 
   describe('body constructors', () => {
@@ -304,6 +308,162 @@ describe('Http', () => {
     it('#5: without withCredentials, credentials is not set', async () => {
       await runResult(Http.toTask(Http.get('http://x/api', Http.expectWhatever)))
       expect(lastInit?.credentials).toBeUndefined()
+    })
+  })
+
+  describe('request bodies', () => {
+    const origFetch = globalThis.fetch
+    let sent: RequestInit | undefined
+
+    beforeEach(() => {
+      sent = undefined
+      globalThis.fetch = (async (_input: any, init: any) => {
+        sent = init
+        return new Response('{"id":1}', { status: 201, headers: { 'content-type': 'application/json' } })
+      }) as typeof fetch
+    })
+    afterEach(() => { globalThis.fetch = origFetch })
+
+    const send = (body: Http.Body, method: Http.Method = 'POST', headers: ReadonlyArray<Http.Header> = []) =>
+      Effect.runPromise(Http.toTask(Http.request({ method, url: 'http://x/api/upload', body, headers, expect: Http.expectWhatever })))
+
+    const contentType = () => new Headers(sent?.headers as HeadersInit).get('content-type')
+
+    const text = (body: unknown) => new TextDecoder().decode(body as Uint8Array)
+
+    it('fileBody sends the file itself, typed by the file', async () => {
+      const csv = new File(['id\n'], 'platforme.csv', { type: 'text/csv' })
+      await send(Http.fileBody(csv))
+      expect(sent?.body).toBe(csv)
+      expect(contentType()).toBe('text/csv')
+    })
+
+    it('fileBody types a file the browser knows nothing about as application/octet-stream', async () => {
+      await send(Http.fileBody(new File(['?'], 'dump.bin')))
+      expect(contentType()).toBe('application/octet-stream')
+    })
+
+    it('stringBody sends text with the given type', async () => {
+      await send(Http.stringBody('text/csv', 'id,naziv\n'))
+      expect(text(sent?.body)).toBe('id,naziv\n')
+      expect(contentType()).toBe('text/csv')
+    })
+
+    it('bytesBody sends bytes with the given type', async () => {
+      await send(Http.bytesBody('application/pdf', new Uint8Array([37, 80, 68, 70])))
+      expect(text(sent?.body)).toBe('%PDF')
+      expect(contentType()).toBe('application/pdf')
+    })
+
+    it('multipartBody sends every part in a FormData and leaves Content-Type to fetch', async () => {
+      const contract = new File(['%PDF'], 'ugovor.pdf', { type: 'application/pdf' })
+      await send(
+        Http.multipartBody([
+          Http.stringPart('opis', 'Ugovor'),
+          Http.filePart('fajl', contract),
+          Http.bytesPart('potpis', 'image/png', new Uint8Array([1, 2]))
+        ]),
+        'POST',
+        [Http.contentType('multipart/form-data')]
+      )
+      const form = sent?.body as FormData
+      expect(form).toBeInstanceOf(FormData)
+      expect(form.get('opis')).toBe('Ugovor')
+      expect((form.get('fajl') as File).name).toBe('ugovor.pdf')
+      expect(await (form.get('fajl') as File).text()).toBe('%PDF')
+      expect((form.get('potpis') as File).type).toBe('image/png')
+      // The boundary is fetch's to write, so a Content-Type set by hand is dropped.
+      expect(contentType()).toBeNull()
+    })
+
+    it('jsonBody still sends JSON as application/json', async () => {
+      await send(Http.jsonBody(Schema.Struct({ naziv: Schema.String }), { naziv: 'Windows' }))
+      expect(text(sent?.body)).toBe('{"naziv":"Windows"}')
+      expect(contentType()).toBe('application/json')
+    })
+
+    it('a request without a body keeps a Content-Type set by hand', async () => {
+      await send(Http.emptyBody, 'POST', [Http.contentType('text/plain')])
+      expect(sent?.body).toBeUndefined()
+      expect(contentType()).toBe('text/plain')
+    })
+
+    it('GET and HEAD send no body, whatever the request carries', async () => {
+      await send(Http.fileBody(new File(['x'], 'x.txt')), 'GET')
+      expect(sent?.body).toBeUndefined()
+      await send(Http.stringBody('text/plain', 'x'), 'HEAD')
+      expect(sent?.body).toBeUndefined()
+    })
+  })
+
+  describe('expectFile', () => {
+    const origFetch = globalThis.fetch
+    const CSV = 'id,naziv\n1,Windows\n'
+    let answer: () => Response = () => new Response(CSV)
+
+    beforeEach(() => {
+      globalThis.fetch = (async () => answer()) as typeof fetch
+    })
+    afterEach(() => { globalThis.fetch = origFetch })
+
+    const download = (url: string, headers: Record<string, string>, status = 200, body: string = CSV) => {
+      answer = () => new Response(body, { status, headers })
+      return Effect.runPromise(Effect.result(Http.toTask(Http.get(url, Http.expectFile))))
+    }
+
+    const named = async (disposition: string, url = 'http://x/api/izvoz'): Promise<string> => {
+      const result = await download(url, { 'content-disposition': disposition })
+      if (!Result.isSuccess(result)) throw new Error(`expected a file, got ${result.failure._tag}`)
+      return result.success.name
+    }
+
+    it('reads the body as a File typed by Content-Type', async () => {
+      const result = await download('http://x/api/izvoz', {
+        'content-type': 'text/csv; charset=utf-8',
+        'content-disposition': 'attachment; filename="platforme.csv"'
+      })
+      expect(Result.isSuccess(result)).toBe(true)
+      if (Result.isSuccess(result)) {
+        expect(result.success).toBeInstanceOf(File)
+        expect(result.success.type).toBe('text/csv; charset=utf-8')
+        expect(await result.success.text()).toBe(CSV)
+      }
+    })
+
+    it('prefers filename* so a UTF-8 name survives', async () => {
+      expect(await named(`attachment; filename="uredjaji.csv"; filename*=UTF-8''ure%C4%91aji.csv`)).toBe('uređaji.csv')
+    })
+
+    it('reads an ISO-8859-1 filename*', async () => {
+      expect(await named(`attachment; filename*=ISO-8859-1''caf%E9.csv`)).toBe('café.csv')
+    })
+
+    it('falls back to a quoted filename, unescaping it', async () => {
+      expect(await named('attachment; filename="report \\"Q3\\".pdf"')).toBe('report "Q3".pdf')
+    })
+
+    it('reads an unquoted filename', async () => {
+      expect(await named('attachment; filename=report.pdf')).toBe('report.pdf')
+    })
+
+    it('repairs a raw UTF-8 filename that arrives byte by byte', async () => {
+      const raw = Buffer.from('attachment; filename="izveštaj.pdf"', 'utf8').toString('latin1')
+      expect(await named(raw)).toBe('izveštaj.pdf')
+    })
+
+    it('keeps only the base name of a filename with a path', async () => {
+      expect(await named('attachment; filename="../../etc/passwd"')).toBe('passwd')
+    })
+
+    it('names the file after the last URL segment without Content-Disposition', async () => {
+      const result = await download('http://x/files/izvoz%20platformi.xlsx?sort=naziv', {})
+      expect(Result.isSuccess(result) && result.success.name).toBe('izvoz platformi.xlsx')
+    })
+
+    it('keeps a status outside 2xx as BadStatus with the body as text', async () => {
+      const errors = JSON.stringify([{ type: 'BUSINESS', message: 'Nema podataka za izvoz' }])
+      const result = await download('http://x/api/izvoz', { 'content-type': 'application/json' }, 400, errors)
+      expect(Result.isFailure(result) && result.failure).toEqual(Http.badStatus(400, errors))
     })
   })
 })

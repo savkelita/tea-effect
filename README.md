@@ -260,6 +260,7 @@ export const view =
 | `Sub`          | Subscriptions - streams of external events    |
 | `Task`         | Tasks - convert Effects to Commands           |
 | `Http`         | HTTP requests with Schema validation          |
+| `File`         | Picking, reading and saving files             |
 | `LocalStorage` | Browser storage with Schema encoding          |
 | `Navigation`   | Browser history and URL management            |
 | `Router`       | Type-safe URL routing with Schema validation  |
