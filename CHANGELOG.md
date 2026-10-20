@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Http: `expectFile` reads the response body as bytes and gives a `File`. Its name comes from `Content-Disposition`: `filename*` (RFC 8187, `UTF-8` or `ISO-8859-1`) before `filename`, quoted or not. A raw UTF-8 `filename`, which fetch hands over byte for byte and so arrives as Latin-1, is decoded back when it is valid UTF-8. Only the base name is kept, so `../../x.pdf` is saved as `x.pdf`. Without the header the name is the last segment of the URL, and `download` when there is none. The type is the response's `Content-Type`. A status outside 2xx is still `BadStatus` with the body as text, as with every other expectation, so a server can answer a failed export with its usual JSON errors
+- File: a new module, `tea-effect/File`, after Elm's `elm/file`. `File.File` is the browser's `File`. `File.toText`, `File.toBytes` (a `Uint8Array<ArrayBuffer>`) and `File.toDataUrl` read it as Tasks that fail with a `ReadError`; interrupting `toDataUrl` aborts the read. The root `tea-effect` entry re-exports the module as `File`
+- File.Select: `file(accept, toMsg)` and `files(accept, toMsg)` ask the user for one file or several, through a hidden `<input type="file">` that stays in the document while the picker is open. `files` hands `toMsg` a non-empty array. Dismissing the picker sends no message where the browser fires `cancel`; where it does not, the command stays pending. Browsers open the picker only in response to a user action, so the command belongs in the `update` branch for that click
+- File.Download: `file(file)`, `text(name, mime, content)` and `bytes(name, mime, content)` save a file through a hidden link and revoke its object URL 40 seconds later, on a detached fiber, since Safari and Firefox can cancel a download whose URL is revoked right after the click. `url(href)` lets the browser download a URL itself, straight to disk, and opens one on another origin in a new tab, since browsers download only same-origin links. `send(request, { onSuccess, onError })` sends a `Request<File>`, saves the file it answers with and passes only the file name to `onSuccess`, so the file never reaches a message; a failed request saves nothing and ends in `onError`. Without a `document`, every command here does nothing
+- Http: request bodies for files, after Elm's: `fileBody(file)` sends a `File` or `Blob` as the whole body, passed to fetch as it is so the browser streams it from disk, with the file's type as `Content-Type`, or `application/octet-stream` when the type is unknown. `stringBody(mime, text)` and `bytesBody(mime, bytes)` send content with an explicit type. `multipartBody(parts)` sends `multipart/form-data` built from `stringPart(name, value)`, `filePart(name, file)` and `bytesPart(name, mime, bytes)`; fetch writes its `Content-Type` with the boundary, and a `Content-Type` header set on the request is dropped. GET and HEAD still send no body
+- package.json: a `./File` export, which `smoke:dist` loads like the others
+
+### Changed
+- Http: `Expect<A>` has a third case, `{ _tag: 'ExpectFile'; decoder }`, and `Body` four more - `StringBody`, `BytesBody`, `FileBody` and `MultipartBody`, the last holding the new `Part` type. A `switch` over `Expect._tag` or `Body._tag` that is checked for exhaustiveness has to handle them
+- Http: the request body is now set after the request's headers for every kind of body, as the JSON body already was, so the body decides `Content-Type`. A JSON body is still `application/json`, and a request without a body still keeps a `Content-Type` header set by hand
+
 ## [0.9.0] - 2026-10-19
 
 Requires Effect 4.0 (`effect` `~4.0.0`).

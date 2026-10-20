@@ -49,3 +49,25 @@ export const authorized = (token: string) => Http.withHeaders([Http.bearerToken(
 export const createUserAs = (token: string, user: NewUser) =>
   pipe(createUser(user), authorized(token))
 // #endregion headers
+
+// #region download
+// JSONPlaceholder sends no Content-Disposition, so the file is named after the
+// last URL segment: this saves the user list as a file called `users`.
+export const usersFile = Http.get(`${BASE_URL}/users`, Http.expectFile)
+// #endregion download
+
+// #region upload
+// JSONPlaceholder accepts the upload and answers with an id, but keeps nothing.
+export const Created = Schema.Struct({ id: Schema.Number })
+
+// The whole body is the file: the server reads it as it is.
+export const uploadCsv = (csv: File) => Http.post(`${BASE_URL}/posts`, Http.fileBody(csv), Http.expectJson(Created))
+
+// A form: fields and files together, as multipart/form-data.
+export const uploadAvatar = (photo: File) =>
+  Http.post(
+    `${BASE_URL}/posts`,
+    Http.multipartBody([Http.stringPart('userId', '1'), Http.filePart('avatar', photo)]),
+    Http.expectJson(Created)
+  )
+// #endregion upload
