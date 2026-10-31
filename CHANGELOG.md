@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Navigation: `Location.index` is the entry's position in the tab's history. `Navigation.program` numbers the entry it starts on `0`, `pushUrl` adds one, `replaceUrl` keeps the position, and back and forward restore the position the browser kept for that entry, so the difference between two positions is what `back(n)` or `forward(n)` needs to move between them. After a reload the entry keeps the position it had
+- Navigation: `Location.key` identifies the history entry. Every `pushUrl` and `replaceUrl` gives the entry it writes a new key, so two entries with the same URL can be told apart, and an entry the user returns to with back or forward has the key it had when it was left. An application can keep view state per entry in its model under that key
+- Navigation: both are `null` for an entry tea-effect did not write (other code calling `history.pushState`, or an entry stored before this version), and `index` stays `null` for entries pushed after one, since their position cannot be known. A `linkClicks` request has neither, because it is not an entry yet. Without `Navigation.program` no entry is numbered, so `index` is always `null`, while keys still work
+
+### Changed
+
+- Navigation: `history.state` holds tea-effect's own object, with the position and key next to the application's state. `Location.state` is still exactly what was passed to `pushUrl` or `replaceUrl`, and an entry stored before this version is read as the application's state, as before. Code that read `window.history.state` directly gets the new object and should read `Location.state` instead
+- Navigation: `Navigation.program` writes the entry it starts on once, through `replaceState` with the same URL, unless tea-effect wrote that entry already
+
+### Breaking
+
+- Navigation: `Location` carries `index` and `key`, so every `Location` literal must supply them (`null` when there is none)
+
 ## [0.10.0] - 2026-10-20
 
 ### Added

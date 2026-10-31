@@ -84,6 +84,55 @@ Because the click is intercepted rather than followed, `LinkClicked` is where an
 "unsaved changes" guard belongs - returning `Cmd.none` simply leaves the user
 where they are.
 
+## Which entry the user is on
+
+The browser keeps a list of entries for each tab and knows which one it is
+showing. A URL alone does not tell you that: the same address can be in the
+list twice, and a change can come from a push, from back or from forward.
+Every `Location` therefore says which entry it is:
+
+- `state` - whatever `pushUrl` or `replaceUrl` stored with the entry. Back and
+  forward hand it back.
+- `index` - the entry's position. `Navigation.program` numbers the entry it
+  starts on `0`, `pushUrl` adds one, `replaceUrl` keeps the position, and back
+  and forward restore the position the browser kept.
+- `key` - an id for the entry. Every `pushUrl` and `replaceUrl` gives the entry
+  it writes a new key, and an entry the user returns to has the key it had when
+  it was left.
+
+None of this changes how a program works, and you can ignore all three. They
+are there for decisions that need to know *which* entry the user is on:
+
+- Compare the new `index` with the one in your model to tell back from forward.
+- `back(n)` or `forward(n)` with the difference between two positions returns
+  the user to an entry without adding a new one.
+- Keep view state that does not belong in the URL - a selected row, an open
+  panel - in your model under the `key` of the entry it belongs to, and give it
+  back when that key comes back. It stays in the model; the browser only says
+  which entry it is.
+
+```ts
+case 'UrlChanged': {
+  // Remember the selection of the entry being left, under its key.
+  const left = model.location.key
+  const selections =
+    left === null ? model.selections : { ...model.selections, [left]: model.selected }
+  // Restore the selection of the entry being entered, if there was one.
+  const selected = (msg.location.key === null ? undefined : selections[msg.location.key]) ?? []
+  return [{ ...model, location: msg.location, selections, selected }, Cmd.none]
+}
+```
+
+`index` and `key` are `null` for an entry tea-effect did not write - one made
+by other code calling `history.pushState`, or stored by a version before
+0.11.0 - and `index` stays `null` for entries pushed after such an entry,
+because their position cannot be known. A link click is a request, not an
+entry yet, so its location has neither.
+
+tea-effect keeps the position and key next to your state inside
+`history.state`, whose shape is therefore its own. Read your state through
+`Location.state`, not from `window.history.state`.
+
 ## The view
 
 <<< @/examples/routing/App.tsx#view
@@ -117,6 +166,10 @@ const subscriptions = (): Sub.Sub<Msg> =>
 
 `urlChanges` does **not** emit the initial location - read it with
 `Navigation.getLocation()` in `init`.
+
+Only `Navigation.program` numbers the entry it starts on, so without it every
+`index` is `null`. Keys still work: each entry that `pushUrl` or `replaceUrl`
+writes gets one.
 
 ## Next
 
