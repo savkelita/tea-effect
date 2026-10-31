@@ -144,7 +144,9 @@ export type UrlRequest =
  *   hash: '#section',
  *   href: 'https://example.com/users/123?search=foo#section',
  *   origin: 'https://example.com',
- *   state: null
+ *   state: null,
+ *   index: null,
+ *   key: null
  * }
  * ```
  *
@@ -169,7 +171,62 @@ export interface Location {
    * @since 0.8.0
    */
   readonly state: unknown
+  /**
+   * The position of this entry in the tab's history. `Navigation.program` numbers the
+   * entry it starts on `0`; `pushUrl` adds one, `replaceUrl` keeps the position, and back
+   * and forward restore the position the browser kept for that entry. The difference
+   * between two positions is how far `back` or `forward` has to go between them.
+   *
+   * `null` when the position is unknown: an entry tea-effect did not write, such as one
+   * made by other code calling `history.pushState`, and every entry pushed after it.
+   *
+   * @since 0.11.0
+   */
+  readonly index: number | null
+  /**
+   * Identifies this history entry. Every `pushUrl` and `replaceUrl` gives the entry it
+   * writes a new key, so two entries with the same URL can be told apart, and an entry
+   * the user comes back to with back or forward has the key it had when it was left.
+   *
+   * `null` for an entry tea-effect did not write.
+   *
+   * @since 0.11.0
+   */
+  readonly key: string | null
 }
+
+// tea-effect keeps each entry's position and key next to the application's state, in one
+// object it owns. `Location.state` is always the application's own value; the shape of
+// `history.state` itself is internal.
+interface Entry {
+  readonly __tea: { readonly index: number | null; readonly key: string }
+  readonly state: unknown
+}
+
+const isEntry = (raw: unknown): raw is Entry => {
+  if (typeof raw !== 'object' || raw === null || !('__tea' in raw) || !('state' in raw)) return false
+  const tea: unknown = raw.__tea
+  return (
+    typeof tea === 'object' &&
+    tea !== null &&
+    'key' in tea &&
+    typeof tea.key === 'string' &&
+    'index' in tea &&
+    (tea.index === null || typeof tea.index === 'number')
+  )
+}
+
+// An entry tea-effect did not write - made by other code, or stored by a version before
+// 0.11.0 - holds the application's state as it is, with no known position or key.
+const readEntry = (raw: unknown): Pick<Location, 'state' | 'index' | 'key'> =>
+  isEntry(raw)
+    ? { state: raw.state ?? null, index: raw.__tea.index, key: raw.__tea.key }
+    : { state: raw ?? null, index: null, key: null }
+
+// A key only has to differ from the other keys in the same tab's history.
+const newKey = (): string => Math.random().toString(36).slice(2, 10)
+
+const toEntry = (index: number | null, state: unknown): Entry => ({ __tea: { index, key: newKey() }, state })
 
 /**
  * Gets the current browser location.
@@ -181,7 +238,7 @@ export interface Location {
  */
 export const getLocation = (): Location => {
   if (typeof window === 'undefined') {
-    return { pathname: '/', search: '', hash: '', href: '/', origin: '', state: null }
+    return { pathname: '/', search: '', hash: '', href: '/', origin: '', state: null, index: null, key: null }
   }
   return {
     pathname: window.location.pathname,
@@ -189,7 +246,7 @@ export const getLocation = (): Location => {
     hash: window.location.hash,
     href: window.location.href,
     origin: window.location.origin,
-    state: window.history?.state ?? null
+    ...readEntry(window.history?.state)
   }
 }
 
@@ -244,7 +301,8 @@ export const pushUrl = <Msg = never>(url: string, state: unknown = null): Cmd<Ms
   Stream.fromEffectDrain(
     Effect.sync(() => {
       if (typeof window !== 'undefined') {
-        window.history.pushState(state, '', url)
+        const { index } = readEntry(window.history.state)
+        window.history.pushState(toEntry(index === null ? null : index + 1, state), '', url)
         notifyUrlChange()
       }
     })
@@ -272,7 +330,8 @@ export const replaceUrl = <Msg = never>(url: string, state: unknown = null): Cmd
   Stream.fromEffectDrain(
     Effect.sync(() => {
       if (typeof window !== 'undefined') {
-        window.history.replaceState(state, '', url)
+        const { index } = readEntry(window.history.state)
+        window.history.replaceState(toEntry(index, state), '', url)
         notifyUrlChange()
       }
     })
@@ -550,7 +609,9 @@ export const linkClicks = <Msg>(toMsg: (request: UrlRequest) => Msg): Sub<Msg> =
                 hash: url.hash,
                 href: url.href,
                 origin: url.origin,
-                state: null
+                state: null,
+                index: null,
+                key: null
               }
             })
           )
@@ -569,7 +630,9 @@ export const linkClicks = <Msg>(toMsg: (request: UrlRequest) => Msg): Sub<Msg> =
               hash: '',
               href: href,
               origin: window.location.origin,
-              state: null
+              state: null,
+              index: null,
+              key: null
             }
           })
         )
@@ -728,8 +791,18 @@ export const program = <Model, Msg, Dom, E = never, R = never>(
   // Read the location and call init when the program actually starts (deferred),
   // not while constructing the returned Effect, so a URL change before run and
   // re-runs both see the current URL.
-  return Effect.suspend(() =>
-    Html.program(init(getLocation()), update, view, combinedSubscriptions)
-  )
+  return Effect.suspend(() => {
+    markStart()
+    return Html.program(init(getLocation()), update, view, combinedSubscriptions)
+  })
+}
+
+// The entry the program starts on is position 0, unless tea-effect wrote it already:
+// after a reload the entry keeps the position and key it had, so back and forward
+// still line up with the positions handed out before.
+const markStart = (): void => {
+  if (typeof window === 'undefined' || window.history === undefined) return
+  if (isEntry(window.history.state)) return
+  window.history.replaceState(toEntry(0, window.history.state ?? null), '', window.location.href)
 }
 

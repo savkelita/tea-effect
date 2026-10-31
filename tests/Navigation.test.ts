@@ -15,6 +15,8 @@ describe('Navigation', () => {
       expect(location.hash).toBe('')
       expect(location.href).toBe('/')
       expect(location.origin).toBe('')
+      expect(location.index).toBeNull()
+      expect(location.key).toBeNull()
     })
   })
 
@@ -26,7 +28,9 @@ describe('Navigation', () => {
         hash: '#top',
         href: 'https://example.com/users?id=1#top',
         origin: 'https://example.com',
-        state: null
+        state: null,
+        index: null,
+        key: null
       }
       expect(location.pathname).toBe('/users')
       expect(location.search).toBe('?id=1')
@@ -46,7 +50,9 @@ describe('Navigation', () => {
           hash: '',
           href: 'https://example.com/about',
           origin: 'https://example.com',
-          state: null
+          state: null,
+          index: null,
+          key: null
         }
       }
       expect(request._tag).toBe('Internal')
@@ -164,6 +170,9 @@ describe('Navigation', () => {
       expect(got[0]._tag).toBe('Internal')
       if (got[0]._tag === 'Internal') {
         expect(got[0].location.pathname).toBe('/docs/intro')
+        // A click is a request, not an entry yet: it has no position and no key.
+        expect(got[0].location.index).toBeNull()
+        expect(got[0].location.key).toBeNull()
       }
     })
 
@@ -524,6 +533,219 @@ describe('Navigation', () => {
       )
 
       expect(seen).toEqual([{ filter: { kategorija: { id: 1, oznaka: 'B' } } }])
+    })
+  })
+
+  describe('history position', () => {
+    afterEach(() => {
+      // @ts-expect-error - cleaning up mock
+      delete global.window
+    })
+
+    // A tab's history: the entries in order and the one the browser shows. pushState drops
+    // every entry after the current one, as the browser does.
+    const mockHistory = (first: { url: string; state: unknown } = { url: '/', state: null }) => {
+      const entries: Array<{ url: string; state: unknown }> = [first]
+      let current = 0
+      const popHandlers: Array<(e: any) => void> = []
+      const at = () => entries[current]!
+      ;(global as any).window = {
+        location: {
+          get pathname() {
+            return new URL(at().url, 'https://ex.com').pathname
+          },
+          get search() {
+            return new URL(at().url, 'https://ex.com').search
+          },
+          get hash() {
+            return ''
+          },
+          get href() {
+            return new URL(at().url, 'https://ex.com').href
+          },
+          get origin() {
+            return 'https://ex.com'
+          }
+        },
+        history: {
+          get state() {
+            return at().state
+          },
+          pushState: (s: unknown, _t: unknown, url: string) => {
+            entries.splice(current + 1, entries.length, { url, state: s })
+            current += 1
+          },
+          replaceState: (s: unknown, _t: unknown, url: string) => {
+            entries[current] = { url, state: s }
+          },
+          go: (delta: number) => {
+            current += delta
+            popHandlers.forEach((h) => h({ type: 'popstate' }))
+          }
+        },
+        addEventListener: (t: string, h: any) => {
+          if (t === 'popstate') popHandlers.push(h)
+        },
+        removeEventListener: () => {},
+        dispatchEvent: (e: any) => {
+          if (e?.type === 'popstate') popHandlers.forEach((h) => h(e))
+        }
+      }
+      ;(global as any).PopStateEvent = class {
+        type = 'popstate'
+      }
+      return { entries }
+    }
+
+    const run = async <A>(cmd: Stream.Stream<A, never, Scope.Scope>) => {
+      await Effect.runPromise(Effect.scoped(Stream.runDrain(cmd)))
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    }
+
+    // Starts a program on the current entry, as a page load or a reload does, and returns
+    // the location its init was given.
+    const start = async (): Promise<Navigation.Location> => {
+      let seen: Navigation.Location | undefined
+      const App = Navigation.program<null, null, null>({
+        init: (location) => {
+          seen = location
+          return [null, Cmd.none]
+        },
+        update: (_msg, model) => [model, Cmd.none],
+        view: () => () => null,
+        onUrlRequest: () => null,
+        onUrlChange: () => null
+      })
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const scope = yield* Scope.make()
+            yield* App.pipe(Scope.provide(scope))
+            yield* Scope.close(scope, Exit.void)
+          })
+        )
+      )
+      return seen!
+    }
+
+    it('program numbers the entry it starts on 0, gives it a key and keeps the state already there', async () => {
+      mockHistory({ url: '/vozaci', state: { filter: 'aktivni' } })
+      const location = await start()
+      expect(location.index).toBe(0)
+      expect(location.key).toEqual(expect.any(String))
+      expect(location.state).toEqual({ filter: 'aktivni' })
+      expect(Navigation.getLocation()).toEqual(location)
+    })
+
+    it('pushUrl moves one position forward and gives the new entry a new key', async () => {
+      mockHistory()
+      const first = await start()
+      await run(Navigation.pushUrl('/vozaci', { filter: 'aktivni' }))
+      const location = Navigation.getLocation()
+      expect(location.index).toBe(1)
+      expect(location.key).not.toBe(first.key)
+      expect(location.state).toEqual({ filter: 'aktivni' })
+    })
+
+    it('replaceUrl keeps the position but gives the entry a new key', async () => {
+      mockHistory()
+      await start()
+      await run(Navigation.pushUrl('/vozaci?offset=40'))
+      const pushed = Navigation.getLocation()
+      await run(Navigation.replaceUrl('/vozaci'))
+      const replaced = Navigation.getLocation()
+      expect(replaced.index).toBe(pushed.index)
+      expect(replaced.key).not.toBe(pushed.key)
+    })
+
+    it('two entries with the same URL are told apart by their keys', async () => {
+      mockHistory()
+      await start()
+      await run(Navigation.pushUrl('/vozaci'))
+      const a = Navigation.getLocation()
+      await run(Navigation.pushUrl('/vozaci'))
+      const b = Navigation.getLocation()
+      expect(b.index).toBe(a.index! + 1)
+      expect(b.key).not.toBe(a.key)
+    })
+
+    it('back restores the position and key the entry had when it was left', async () => {
+      mockHistory()
+      const first = await start()
+      await run(Navigation.pushUrl('/vozaci'))
+      await run(Navigation.pushUrl('/vozaci/7'))
+      await run(Navigation.back(2))
+      const location = Navigation.getLocation()
+      expect(location.index).toBe(0)
+      expect(location.key).toBe(first.key)
+    })
+
+    it('urlChanges reports the position and key, for a push and for the browser back button', async () => {
+      mockHistory()
+      await start()
+      const seen: Array<Pick<Navigation.Location, 'index' | 'key'>> = []
+
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const scope = yield* Scope.make()
+            const prog = yield* Platform.program<null, Pick<Navigation.Location, 'index' | 'key'>>(
+              [null, Cmd.none],
+              (msg, model) => (seen.push(msg), [model, Cmd.none]),
+              () => Navigation.urlChanges(({ index, key }) => ({ index, key }))
+            ).pipe(Scope.provide(scope))
+            yield* Effect.forkScoped(Stream.runDrain(prog.model$))
+            yield* Effect.sleep('20 millis')
+
+            yield* Stream.runDrain(Navigation.pushUrl('/vozaci'))
+            yield* Effect.sleep('20 millis')
+            yield* Stream.runDrain(Navigation.back(1))
+            yield* Effect.sleep('20 millis')
+            yield* Scope.close(scope, Exit.void)
+          })
+        )
+      )
+
+      expect(seen.map((one) => one.index)).toEqual([1, 0])
+      expect(seen[0]!.key).not.toBe(seen[1]!.key)
+    })
+
+    it('a push after going back takes the next position and a key that was never used', async () => {
+      mockHistory()
+      await start()
+      await run(Navigation.pushUrl('/a'))
+      await run(Navigation.pushUrl('/b'))
+      const dropped = Navigation.getLocation()
+      await run(Navigation.back(1))
+      await run(Navigation.pushUrl('/c'))
+      const location = Navigation.getLocation()
+      expect(location.index).toBe(2)
+      expect(location.key).not.toBe(dropped.key)
+    })
+
+    it('after a reload the entry keeps its position and key', async () => {
+      mockHistory()
+      await start()
+      await run(Navigation.pushUrl('/vozaci', { filter: 'aktivni' }))
+      const before = Navigation.getLocation()
+      const reloaded = await start()
+      expect(reloaded).toEqual(before)
+    })
+
+    it('an entry tea-effect did not write keeps its state, with no position or key', () => {
+      mockHistory({ url: '/vozaci', state: { filter: 'aktivni' } })
+      const location = Navigation.getLocation()
+      expect(location.state).toEqual({ filter: 'aktivni' })
+      expect(location.index).toBeNull()
+      expect(location.key).toBeNull()
+    })
+
+    it('an entry pushed after one of unknown position gets a key but no position', async () => {
+      mockHistory()
+      await run(Navigation.pushUrl('/vozaci'))
+      const location = Navigation.getLocation()
+      expect(location.index).toBeNull()
+      expect(location.key).toEqual(expect.any(String))
     })
   })
 })
