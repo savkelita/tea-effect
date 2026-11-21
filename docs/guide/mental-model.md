@@ -115,6 +115,7 @@ The constructors you will use most:
 | `Task.perform(f)(task)` | Run a task that cannot fail, map its result to a message. |
 | `Task.attemptWith({ onSuccess, onFailure })(task)` | Run a task that can fail, map both outcomes to messages. |
 | `Cmd.batch([a, b])` | Run several commands **concurrently**. |
+| `Cmd.latest(key)(cmd)` | Run a command that replaces the one still running under `key`, so a late answer cannot overwrite a newer one. See [HTTP](/guide/http#answers-that-arrive-out-of-order). |
 
 ::: warning Batched commands have no ordering guarantee
 `Cmd.batch` merges its commands with unbounded concurrency, and their messages

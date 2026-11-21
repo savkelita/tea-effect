@@ -76,6 +76,15 @@ becomes `NaN` and `''` becomes `0`. `Router.IntFromString` exists for this reaso
 order they finish. This matches Elm. If B must happen after A, do not batch them:
 handle A's result message in `update` and return B's command from there.
 
+### A late answer overwrites a newer one
+
+Two loads of the same list - a search per keystroke, a refresh - can answer in
+either order, and `update` cannot tell which answer is current. Put them under
+one key with [`Cmd.latest`](/guide/http#answers-that-arrive-out-of-order), and
+only the latest delivers. Re-label such a command with `Cmd.map`, not
+`Stream.map`: a `Stream` operator gives back a command without the key. Keep
+saves out of it, since a newer command cancels the earlier one.
+
 ## Compile-time surprises
 
 These fail loudly - but the message is not always obvious.
