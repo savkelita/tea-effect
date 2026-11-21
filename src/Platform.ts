@@ -6,9 +6,36 @@
  *
  * @since 0.1.0
  */
-import { Effect, Stream, SubscriptionRef, Queue, Fiber, pipe, Scope, Exit, Deferred, Cause, Scheduler } from 'effect'
-import { Cmd, batch as cmdBatch } from './Cmd'
+import { Effect, Stream, SubscriptionRef, Queue, Fiber, FiberMap, pipe, Scope, Exit, Deferred, Cause, Scheduler } from 'effect'
+import { Cmd, batch as cmdBatch, getCmdEntries } from './Cmd'
 import { Sub, none as subNone, getSubEntries } from './Sub'
+
+// -------------------------------------------------------------------------------------
+// commands under a key (Cmd.latest)
+// -------------------------------------------------------------------------------------
+
+// One start of a command under a key. The program remembers the latest run of each key;
+// a message whose run is no longer that one is dropped instead of reaching `update`.
+class Run {
+  constructor(readonly key: string) {}
+}
+
+// A message of a run, as it waits in the queue.
+class RunMsg<Msg> {
+  constructor(
+    readonly run: Run,
+    readonly msg: Msg
+  ) {}
+}
+
+// Put in the queue when a run finishes, after its last message: once it comes out, no
+// message of the run is left waiting, and the program can forget the run.
+class RunEnd {
+  constructor(readonly run: Run) {}
+}
+
+// What waits in the queue: a message, or what a run under a key put there.
+type Item<Msg> = Msg | RunMsg<Msg> | RunEnd
 
 // -------------------------------------------------------------------------------------
 // model
@@ -117,7 +144,7 @@ export const program = <Model, Msg, E = never, R = never>(
     // - Holds current value
     // - changes stream emits current value on subscription + all changes
     const modelRef = yield* SubscriptionRef.make(initialModel)
-    const msgQueue = yield* Queue.unbounded<Msg>()
+    const msgQueue = yield* Queue.unbounded<Item<Msg>>()
 
     // Failures/defects from forked cmd, subscription and update fibers would
     // otherwise die unobserved; funnel them here so they surface on model$.
@@ -141,7 +168,7 @@ export const program = <Model, Msg, E = never, R = never>(
 
     // Process a command - run the stream and dispatch messages as they arrive
     // Commands are forked so they run concurrently (matching Elm's semantics)
-    const processCmd = (cmd: Cmd<Msg, E, R>): Effect.Effect<void, never, R> =>
+    const runCmd = (cmd: Cmd<Msg, E, R>): Effect.Effect<void, never, R> =>
       pipe(
         cmd,
         Stream.runForEach(msg => Queue.offer(msgQueue, msg)),
@@ -150,6 +177,42 @@ export const program = <Model, Msg, E = never, R = never>(
         Effect.forkIn(progScope),
         Effect.asVoid
       )
+
+    // Commands made with Cmd.latest. FiberMap interrupts the fiber running under a key
+    // when a new one takes the key, and stops them all with the program. The latest run
+    // of each key decides which messages still reach `update`: those the replaced fiber
+    // had already put in the queue as well. A run is forgotten once its end comes out of
+    // the queue, so keys made from ids do not pile up.
+    const latestFibers = yield* FiberMap.make<string>().pipe(Scope.provide(progScope))
+    const latestRuns = new Map<string, Run>()
+
+    const runLatest = (key: string, cmd: Cmd<Msg, E, R>): Effect.Effect<void, never, R> =>
+      Effect.suspend(() => {
+        const run = new Run(key)
+        latestRuns.set(key, run)
+        return pipe(
+          cmd,
+          Stream.runForEach((msg) => Queue.offer(msgQueue, new RunMsg(run, msg))),
+          Effect.andThen(Queue.offer(msgQueue, new RunEnd(run))),
+          Effect.catchCause(surfaceCause),
+          Effect.provideService(Scheduler.Scheduler, scheduler),
+          FiberMap.run(latestFibers, key, { startImmediately: false }),
+          Effect.asVoid
+        )
+      })
+
+    const processCmd = (cmd: Cmd<Msg, E, R>): Effect.Effect<void, never, R> => {
+      const entries = getCmdEntries(cmd)
+      return entries === undefined
+        ? runCmd(cmd)
+        : Effect.forEach(
+            entries,
+            (entry) => (entry.key === undefined ? runCmd(entry.stream) : runLatest(entry.key, entry.stream)),
+            { discard: true }
+          )
+    }
+
+    const isLatest = (run: Run): boolean => latestRuns.get(run.key) === run
 
     const listeners = new Set<(model: Model) => void>()
 
@@ -183,20 +246,33 @@ export const program = <Model, Msg, E = never, R = never>(
         Effect.catchCause(surfaceCause)
       )
 
+    // A message of a run under a key is checked here, as `update` is about to receive it,
+    // not when it leaves the queue: until then a step can still start a newer command
+    // under the key.
+    const deliver = (item: Item<Msg>): void => {
+      if (item instanceof RunMsg) {
+        if (isLatest(item.run)) runNow(step(item.msg))
+      } else if (item instanceof RunEnd) {
+        if (isLatest(item.run)) latestRuns.delete(item.run.key)
+      } else {
+        runNow(step(item))
+      }
+    }
+
     // A dispatch made during a step (a listener, or a model$ consumer resumed inside
     // SubscriptionRef.set while it holds its permit) runs right after that step.
     let handling = false
-    const pending: Array<Msg> = []
-    const handle = (msg: Msg): void => {
+    const pending: Array<Item<Msg>> = []
+    const handle = (item: Item<Msg>): void => {
       if (stopped) return
       if (handling) {
-        pending.push(msg)
+        pending.push(item)
         return
       }
       handling = true
       try {
-        runNow(step(msg))
-        while (pending.length > 0 && !stopped) runNow(step(pending.shift()!))
+        deliver(item)
+        while (pending.length > 0 && !stopped) deliver(pending.shift()!)
       } finally {
         handling = false
         pending.length = 0
@@ -217,8 +293,8 @@ export const program = <Model, Msg, E = never, R = never>(
           return yield* Effect.interrupt
         }
 
-        const msg = yield* Queue.take(msgQueue)
-        yield* Effect.sync(() => handle(msg))
+        const item = yield* Queue.take(msgQueue)
+        yield* Effect.sync(() => handle(item))
       }),
       // v4 forever yields to the scheduler (setTimeout(0) in browsers) every iteration.
       { disableYield: true }

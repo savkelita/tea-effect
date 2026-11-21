@@ -1,7 +1,8 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { Effect, Stream, Exit, Scope, Schedule } from 'effect'
 import * as Platform from '../src/Platform'
 import * as Cmd from '../src/Cmd'
+import * as Http from '../src/Http'
 import * as Sub from '../src/Sub'
 
 describe('Platform', () => {
@@ -333,5 +334,199 @@ describe('Platform', () => {
         )
       )
     }, 10000)
+  })
+
+  describe('Cmd.latest', () => {
+    type Msg = { readonly type: 'Run'; readonly cmd: Cmd.Cmd<Msg> } | { readonly type: 'Got'; readonly value: string }
+
+    const got = (value: string): Msg => ({ type: 'Got', value })
+    // Hands `update` the command to return.
+    const run = (cmd: Cmd.Cmd<Msg>): Msg => ({ type: 'Run', cmd })
+    const answer = (value: string, ms: number): Cmd.Cmd<Msg> => Cmd.fromEffect(Effect.as(Effect.sleep(ms), got(value)))
+    const watched = (value: string, ms: number, onInterrupt: () => void): Cmd.Cmd<Msg> =>
+      Cmd.fromEffect(Effect.onInterrupt(Effect.as(Effect.sleep(ms), got(value)), () => Effect.sync(onInterrupt)))
+
+    // The model is every value `update` received, in order.
+    const start = (initial: Cmd.Cmd<Msg> = Cmd.none) =>
+      Effect.gen(function* () {
+        const prog = yield* Platform.program<ReadonlyArray<string>, Msg>([[], initial], (msg, values) =>
+          msg.type === 'Run' ? [values, msg.cmd] : [[...values, msg.value], Cmd.none]
+        )
+        let received: ReadonlyArray<string> = []
+        prog.subscribe((values) => {
+          received = values
+        })
+        return { prog, received: () => received }
+      })
+
+    const runTest = (test: Effect.Effect<void, never, Scope.Scope>) => Effect.runPromise(Effect.scoped(test))
+
+    it('delivers only the latest command under a key and interrupts the earlier one', () =>
+      runTest(
+        Effect.gen(function* () {
+          const { prog, received } = yield* start()
+          let interrupted = false
+          prog.dispatch(run(Cmd.latest('k')(watched('old', 60, () => (interrupted = true)))))
+          yield* Effect.sleep(10)
+          prog.dispatch(run(Cmd.latest('k')(answer('new', 20))))
+          yield* Effect.sleep(120)
+          expect(received()).toEqual(['new'])
+          expect(interrupted).toBe(true)
+        })
+      ))
+
+    it('replaces the initial command under a key as well', () =>
+      runTest(
+        Effect.gen(function* () {
+          let interrupted = false
+          const { prog, received } = yield* start(Cmd.latest('k')(watched('initial', 60, () => (interrupted = true))))
+          yield* Effect.sleep(10)
+          prog.dispatch(run(Cmd.latest('k')(answer('new', 20))))
+          yield* Effect.sleep(120)
+          expect(received()).toEqual(['new'])
+          expect(interrupted).toBe(true)
+        })
+      ))
+
+    it('drops a message the replaced command had already put in the queue', () =>
+      runTest(
+        Effect.gen(function* () {
+          const { prog, received } = yield* start()
+          // The answer waits in the queue when a refresh starts a newer command under the key.
+          const answerThenRefresh: Cmd.Cmd<Msg> = Stream.concat(
+            Stream.make(got('old')),
+            Stream.fromEffectDrain(Effect.sync(() => prog.dispatch(run(Cmd.latest('k')(Cmd.of(got('new')))))))
+          )
+          prog.dispatch(run(Cmd.latest('k')(answerThenRefresh)))
+          yield* Effect.sleep(50)
+          expect(received()).toEqual(['new'])
+        })
+      ))
+
+    // The end of a finished command can still wait in the queue when a newer one takes the key.
+    it('keeps the newer command when the end of the replaced one comes out of the queue', () =>
+      runTest(
+        Effect.gen(function* () {
+          const { prog, received } = yield* start()
+          // The refresh starts while `update` handles the answer, before the end of the
+          // answered command comes out of the queue.
+          let refreshed = false
+          prog.subscribe((values) => {
+            if (values.includes('old') && !refreshed) {
+              refreshed = true
+              prog.dispatch(run(Cmd.latest('k')(answer('new', 10))))
+            }
+          })
+          prog.dispatch(run(Cmd.latest('k')(Cmd.of(got('old')))))
+          yield* Effect.sleep(60)
+          expect(received()).toEqual(['old', 'new'])
+        })
+      ))
+
+    it('leaves commands under other keys and commands without a key alone', () =>
+      runTest(
+        Effect.gen(function* () {
+          const { prog, received } = yield* start()
+          prog.dispatch(run(Cmd.latest('a')(answer('a', 20))))
+          prog.dispatch(run(Cmd.latest('b')(answer('b', 20))))
+          prog.dispatch(run(answer('plain 1', 20)))
+          prog.dispatch(run(answer('plain 2', 20)))
+          yield* Effect.sleep(80)
+          expect([...received()].sort()).toEqual(['a', 'b', 'plain 1', 'plain 2'])
+        })
+      ))
+
+    it('stops what runs under the key for none', () =>
+      runTest(
+        Effect.gen(function* () {
+          const { prog, received } = yield* start()
+          let interrupted = false
+          prog.dispatch(run(Cmd.latest('k')(watched('old', 40, () => (interrupted = true)))))
+          yield* Effect.sleep(10)
+          prog.dispatch(run(Cmd.latest('k')(Cmd.none)))
+          yield* Effect.sleep(80)
+          expect(received()).toEqual([])
+          expect(interrupted).toBe(true)
+        })
+      ))
+
+    it('keeps the key through map', () =>
+      runTest(
+        Effect.gen(function* () {
+          const { prog, received } = yield* start()
+          const renamed = Cmd.map((msg: Msg): Msg => (msg.type === 'Got' ? got(`mapped ${msg.value}`) : msg))
+          prog.dispatch(run(renamed(Cmd.latest('k')(answer('old', 40)))))
+          yield* Effect.sleep(10)
+          prog.dispatch(run(Cmd.latest('k')(answer('new', 10))))
+          yield* Effect.sleep(80)
+          expect(received()).toEqual(['new'])
+        })
+      ))
+
+    it('runs only the last command with a key in one batch', () =>
+      runTest(
+        Effect.gen(function* () {
+          const { prog, received } = yield* start()
+          prog.dispatch(
+            run(Cmd.batch([Cmd.latest('k')(answer('first', 10)), Cmd.latest('k')(answer('second', 10)), answer('plain', 10)]))
+          )
+          yield* Effect.sleep(60)
+          expect([...received()].sort()).toEqual(['plain', 'second'])
+        })
+      ))
+
+    it('stops commands under a key when the program shuts down', () =>
+      runTest(
+        Effect.gen(function* () {
+          const { prog } = yield* start()
+          let interrupted = false
+          prog.dispatch(run(Cmd.latest('k')(watched('old', 1000, () => (interrupted = true)))))
+          yield* Effect.sleep(10)
+          yield* prog.shutdown
+          expect(interrupted).toBe(true)
+        })
+      ))
+
+    // Unlike shutdown, closing the scope leaves dispatch on: `update` still runs, and the
+    // command it returns cannot start.
+    it('does not throw for a command under a key after the program scope closed', async () => {
+      const { prog } = await Effect.runPromise(Effect.scoped(start()))
+      expect(() => prog.dispatch(run(Cmd.latest('k')(Cmd.of(got('late')))))).not.toThrow()
+    })
+
+    describe('with Http', () => {
+      const origFetch = globalThis.fetch
+      let signals: Array<AbortSignal> = []
+      beforeEach(() => {
+        signals = []
+        // Answers only by failing when the request is aborted.
+        globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+          const signal = init?.signal ?? (input instanceof Request ? input.signal : undefined)
+          if (signal) signals.push(signal)
+          return new Promise<Response>((_, reject) => signal?.addEventListener('abort', () => reject(signal.reason)))
+        }) as typeof fetch
+      })
+      afterEach(() => {
+        globalThis.fetch = origFetch
+      })
+
+      it('aborts the request of the replaced command', () =>
+        runTest(
+          Effect.gen(function* () {
+            const { prog, received } = yield* start()
+            const load = Http.send(Http.get('http://x/users', Http.expectString), {
+              onSuccess: () => got('loaded'),
+              onError: (error) => got(error._tag)
+            })
+            prog.dispatch(run(Cmd.latest('k')(load)))
+            yield* Effect.sleep(10)
+            expect(signals).toHaveLength(1)
+            prog.dispatch(run(Cmd.latest('k')(Cmd.none)))
+            yield* Effect.sleep(10)
+            expect(signals[0].aborted).toBe(true)
+            expect(received()).toEqual([])
+          })
+        ))
+    })
   })
 })

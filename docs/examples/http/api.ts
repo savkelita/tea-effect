@@ -40,6 +40,19 @@ export const createUser = (user: NewUser) =>
   Http.post(`${BASE_URL}/users`, Http.jsonBody(NewUser, user), Http.expectJson(User))
 // #endregion requests
 
+// #region posts
+export const Post = Schema.Struct({
+  id: Schema.Number,
+  userId: Schema.Number,
+  title: Schema.String
+})
+
+export type Post = Schema.Schema.Type<typeof Post>
+
+export const postsOf = (userId: number) =>
+  Http.get(`${BASE_URL}/posts?userId=${userId}`, Http.expectJson(Schema.Array(Post)))
+// #endregion posts
+
 // #region headers
 // JSONPlaceholder needs no authentication. This is the shape for an API that does.
 // Modifiers are ordinary Request -> Request functions, so a combination you use
