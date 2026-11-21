@@ -69,7 +69,7 @@ renders the child with a dispatch that wraps everything it sends.
 
 | | |
 | --- | --- |
-| `Cmd.map(f)` | Re-labels a child's commands. `none` maps to `none` itself, so "this branch does nothing" survives the boundary. |
+| `Cmd.map(f)` | Re-labels a child's commands. `none` maps to `none` itself, so "this branch does nothing" survives the boundary, and a `Cmd.latest` key goes up with the command. |
 | `Sub.map(f)` | Re-labels a child's subscriptions, keeping their identity so a mapped timer is not restarted on every model change. |
 | `Html.map(f)` | Re-labels a child's view. |
 

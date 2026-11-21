@@ -85,6 +85,45 @@ The two that get confused:
 <<< @/examples/http/Users.tsx
 :::
 
+## Answers that arrive out of order
+
+`LoadRequested` above ignores a second click while the list loads, and that is
+enough when the request cannot change. When it can - a search as the user types,
+a list that follows a filter or a selection, a refresh - a new request can go out
+before the last one answers, and answers need not arrive in the order the
+requests went out. `update` cannot tell a late answer to an old request from the
+answer to the current one, so whichever arrives last wins.
+
+Put the command under a key with `Cmd.latest`:
+
+<<< @/examples/http/Posts.ts#latest
+
+When a command under a key starts, the runtime interrupts the one already
+running under that key - its `fetch` is aborted - and drops every message of the
+earlier command that `update` has not received yet, including one already
+waiting its turn. `update` sees only the answer to the latest request, with no
+request id in the model and no check in its branches.
+
+What keeps it right:
+
+- **Reads only.** A newer command cancels the earlier one, so a save never goes
+  under a key.
+- **One key per place the answer goes**, not per request: `'posts'` for the list
+  above. A module shown in several places at once takes its key from its parent,
+  since two places under one key would cancel each other.
+- **`Cmd.map` and `Cmd.batch` keep the key**, and in one batch the last command
+  with a key wins. A `Stream` operator applied by hand gives back a command
+  without the key, which runs like any other.
+- **`Cmd.latest(key)(Cmd.none)` stops** whatever runs under the key, for an
+  answer that is no longer wanted.
+
+Outside a program - running the command as a `Stream` in a test - nothing is
+replaced, and every message arrives.
+
+::: details The complete file, imports included
+<<< @/examples/http/Posts.ts
+:::
+
 ## Downloading a file
 
 A file is a response like any other. Describe it with `Http.expectFile` and the

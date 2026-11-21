@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Cmd: `latest(key)(cmd)` runs a command under a key, so that only the latest command with that key delivers messages. When the runtime starts a command under a key while an earlier one with the same key still runs, it interrupts the earlier one - an `Http` request is aborted - and drops every message of the earlier one that `update` has not received yet, including one already waiting in the queue. Commands under other keys and commands without a key are not affected. `map` keeps the key, in one `batch` the last command with a key wins, and `latest(key)(Cmd.none)` stops what runs under the key. Outside a program the command delivers every message. Meant for reads whose answer replaces the previous one - a list, a search, a refresh - never for writes. The runtime forgets a key once the last message of its command has gone through, so keys made from ids do not pile up
+- Cmd: `getCmdEntries` and `CmdEntry` give the parts of a command the runtime runs one by one, as `Sub.getSubEntries` does for subscriptions; `getCmdEntries` is `undefined` for a command without a key
+
 ## [0.11.0] - 2026-10-31
 
 ### Added
