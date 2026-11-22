@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Navigation: `ProgramConfig.title` is an optional `(model) => string`, the `title` of the `Document` that Elm's `Browser.application` asks the view for. With it, on startup and after each update, `Navigation.program` computes the title from the current model and writes it only if it differs from `document.title`; closing the program's scope stops it. The view stays as it is: the title is a pure function of the model and the program performs the write. Without `title` the program never touches `document.title`, and without a `document` it writes nothing
 
+### Changed
+
+- package.json: the `effect` peer range is `~4.0.0 || ~4.1.0` (was `~4.0.0`), so tea-effect installs next to Effect 4.1. It is tested on 4.0.0, the lowest version the range allows, and on 4.1.5, now the dev dependency; CI runs both on every Node version. The range still grows one minor at a time, because the `effect/http` modules that `Http` imports are still marked `@stability unstable` in Effect 4.1
+
 ### Fixed
 
 - Cmd: after a command under `latest(key)` fails or is interrupted from inside, the runtime forgets the key, as it does after one that completes. Before, such a key stayed remembered, so keys made from ids could pile up. No message is delivered or dropped differently
