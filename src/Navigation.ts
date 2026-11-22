@@ -675,6 +675,16 @@ export interface ProgramConfig<Model, Msg, Dom, E = never, R = never> {
   readonly view: (model: Model) => Html.Html<Dom, Msg>
 
   /**
+   * The document title for a model, like the `title` of Elm's `Document`.
+   *
+   * On startup and after each update, the program computes the title from the current
+   * model and writes it only if it differs from `document.title`. Closing the program's
+   * scope stops it. The title is a pure function of the model, as the view is; the program
+   * performs the write. Without it, the program never touches `document.title`.
+   */
+  readonly title?: (model: Model) => string
+
+  /**
    * Additional subscriptions (besides navigation).
    * Navigation subscriptions are automatically included.
    */
@@ -701,6 +711,7 @@ export interface ProgramConfig<Model, Msg, Dom, E = never, R = never> {
  * - Passes the initial location to your `init` function
  * - Subscribes to link clicks and URL changes
  * - Batches navigation subscriptions with your custom subscriptions
+ * - Keeps `document.title` in step with `title`, when you give it
  *
  * @example
  * ```ts
@@ -753,6 +764,7 @@ export interface ProgramConfig<Model, Msg, Dom, E = never, R = never> {
  *   init: (location) => [{ route: parseRoute(location) }, Cmd.none],
  *   update,
  *   view,
+ *   title: (model) => `${model.route} | My app`,
  *   subscriptions: () => Sub.none,
  *   onUrlRequest: (request): Msg => ({ type: 'LinkClicked', request }),
  *   onUrlChange: (location): Msg => ({ type: 'UrlChanged', location })
@@ -776,6 +788,7 @@ export const program = <Model, Msg, Dom, E = never, R = never>(
     update,
     view,
     subscriptions = () => subNone,
+    title,
     onUrlRequest,
     onUrlChange
   } = config
@@ -793,7 +806,8 @@ export const program = <Model, Msg, Dom, E = never, R = never>(
   // re-runs both see the current URL.
   return Effect.suspend(() => {
     markStart()
-    return Html.program(init(getLocation()), update, view, combinedSubscriptions)
+    const started = Html.program(init(getLocation()), update, view, combinedSubscriptions)
+    return title === undefined ? started : Effect.tap(started, (prog) => followTitle(prog.subscribe, title))
   })
 }
 
@@ -804,5 +818,24 @@ const markStart = (): void => {
   if (typeof window === 'undefined' || window.history === undefined) return
   if (isEntry(window.history.state)) return
   window.history.replaceState(toEntry(0, window.history.state ?? null), '', window.location.href)
+}
+
+// On startup and after each update, the program computes the title from the current model
+// and writes it only if it differs from document.title. Closing the scope removes the
+// listener.
+const followTitle = <Model>(
+  subscribe: (listener: (model: Model) => void) => () => void,
+  title: (model: Model) => string
+): Effect.Effect<void, never, Scope.Scope> =>
+  Effect.asVoid(
+    Effect.acquireRelease(
+      Effect.sync(() => subscribe((model) => writeTitle(title(model)))),
+      (stop) => Effect.sync(stop)
+    )
+  )
+
+const writeTitle = (title: string): void => {
+  if (typeof document === 'undefined') return
+  if (document.title !== title) document.title = title
 }
 

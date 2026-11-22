@@ -3,6 +3,7 @@
   "projectHomepage": "https://github.com/savkelita/tea-effect",
   "srcDir": "src",
   "outDir": "docs-api",
+  "exclude": ["src/internal/**/*.ts"],
   "enforceVersion": true,
   "examplesCompilerOptions": {
     "target": "ES2022",

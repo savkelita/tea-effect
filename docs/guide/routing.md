@@ -152,6 +152,20 @@ was opened at. It is the equivalent of Elm's `Browser.application`.
 <<< @/examples/routing/App.tsx
 :::
 
+## The page title
+
+<<< @/examples/routing/App.tsx#title
+
+Give `Navigation.program` a `title` and it keeps `document.title` in step with
+the model: on startup and after each update, it computes the title from the
+current model and writes it only if it differs from `document.title`, so an
+update that keeps the title writes nothing. The function is pure, like the view;
+the program performs the write. It is the `title` of the `Document` that Elm's `Browser.application`
+asks the view for.
+
+Without `title` the program never touches `document.title`, so a page that
+sets it some other way keeps working.
+
 ## Doing it by hand
 
 If you would rather not use `Navigation.program`, subscribe yourself:

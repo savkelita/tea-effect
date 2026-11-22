@@ -8,34 +8,8 @@
  */
 import { Effect, Stream, SubscriptionRef, Queue, Fiber, FiberMap, pipe, Scope, Exit, Deferred, Cause, Scheduler } from 'effect'
 import { Cmd, batch as cmdBatch, getCmdEntries } from './Cmd'
+import { Run, RunEnd, RunMsg, runToEnd, type Item } from './internal/latest'
 import { Sub, none as subNone, getSubEntries } from './Sub'
-
-// -------------------------------------------------------------------------------------
-// commands under a key (Cmd.latest)
-// -------------------------------------------------------------------------------------
-
-// One start of a command under a key. The program remembers the latest run of each key;
-// a message whose run is no longer that one is dropped instead of reaching `update`.
-class Run {
-  constructor(readonly key: string) {}
-}
-
-// A message of a run, as it waits in the queue.
-class RunMsg<Msg> {
-  constructor(
-    readonly run: Run,
-    readonly msg: Msg
-  ) {}
-}
-
-// Put in the queue when a run finishes, after its last message: once it comes out, no
-// message of the run is left waiting, and the program can forget the run.
-class RunEnd {
-  constructor(readonly run: Run) {}
-}
-
-// What waits in the queue: a message, or what a run under a key put there.
-type Item<Msg> = Msg | RunMsg<Msg> | RunEnd
 
 // -------------------------------------------------------------------------------------
 // model
@@ -191,9 +165,7 @@ export const program = <Model, Msg, E = never, R = never>(
         const run = new Run(key)
         latestRuns.set(key, run)
         return pipe(
-          cmd,
-          Stream.runForEach((msg) => Queue.offer(msgQueue, new RunMsg(run, msg))),
-          Effect.andThen(Queue.offer(msgQueue, new RunEnd(run))),
+          runToEnd(run, cmd, (item) => Queue.offer(msgQueue, item)),
           Effect.catchCause(surfaceCause),
           Effect.provideService(Scheduler.Scheduler, scheduler),
           FiberMap.run(latestFibers, key, { startImmediately: false }),
