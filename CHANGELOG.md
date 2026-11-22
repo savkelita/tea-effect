@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Navigation: `ProgramConfig.title` is an optional `(model) => string`, the `title` of the `Document` that Elm's `Browser.application` asks the view for. With it, on startup and after each update, `Navigation.program` computes the title from the current model and writes it only if it differs from `document.title`; closing the program's scope stops it. The view stays as it is: the title is a pure function of the model and the program performs the write. Without `title` the program never touches `document.title`, and without a `document` it writes nothing
+
 ## [0.12.0] - 2026-11-21
 
 ### Added

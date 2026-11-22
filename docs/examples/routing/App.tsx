@@ -61,6 +61,29 @@ export const view =
   }
 // #endregion view
 
+// #region title
+// The title is a function of the model, like the view. Navigation.program writes
+// it to document.title whenever an update changes it.
+export const title = (model: Model): string => {
+  switch (model.page._tag) {
+    case 'home':
+      return 'Home'
+
+    case 'users':
+      return 'All users'
+
+    case 'user':
+      return `User ${model.page.params.id}`
+
+    case 'search':
+      return `Results for ${model.page.query.q}`
+
+    case 'notFound':
+      return 'No such page'
+  }
+}
+// #endregion title
+
 // #region program
 // Navigation.program wires up link interception and URL changes for you, and
 // hands `init` the location the page was opened at.
@@ -68,6 +91,7 @@ export const App = Navigation.program({
   init: (location) => [{ page: toPage(location) }, Cmd.none],
   update,
   view,
+  title,
   onUrlRequest: (request): Msg => ({ type: 'LinkClicked', request }),
   onUrlChange: (location): Msg => ({ type: 'UrlChanged', location })
 })

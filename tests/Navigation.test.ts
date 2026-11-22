@@ -748,4 +748,117 @@ describe('Navigation', () => {
       expect(location.key).toEqual(expect.any(String))
     })
   })
+
+  describe('program title', () => {
+    afterEach(() => {
+      // @ts-expect-error - cleaning up mock
+      delete global.document
+    })
+
+    type Model = { readonly count: number }
+    type Msg = 'increment' | 'nothing'
+
+    const counter = (title?: (model: Model) => string) =>
+      Navigation.program<Model, Msg, null>({
+        init: () => [{ count: 0 }, Cmd.none],
+        update: (msg, model) => [msg === 'increment' ? { count: model.count + 1 } : model, Cmd.none],
+        view: () => () => null,
+        ...(title === undefined ? {} : { title }),
+        onUrlRequest: () => 'nothing',
+        onUrlChange: () => 'nothing'
+      })
+
+    // A document that records every write to its title.
+    const mockDocument = (initial: string): ReadonlyArray<string> => {
+      let current = initial
+      const writes: Array<string> = []
+      ;(global as any).document = {
+        get title() {
+          return current
+        },
+        set title(value: string) {
+          writes.push(value)
+          current = value
+        }
+      }
+      return writes
+    }
+
+    const running = (
+      app: ReturnType<typeof counter>,
+      body: (prog: Platform.Program<Model, Msg>) => void
+    ): Promise<void> =>
+      Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            body(yield* app)
+          })
+        )
+      )
+
+    const count = (model: Model): string => `Count ${model.count}`
+
+    it('writes the title of the first model as soon as the program starts', async () => {
+      mockDocument('Static')
+      await running(counter(count), () => {
+        expect(document.title).toBe('Count 0')
+      })
+    })
+
+    it('follows the model through every update', async () => {
+      mockDocument('Static')
+      await running(counter(count), (prog) => {
+        prog.dispatch('increment')
+        prog.dispatch('increment')
+        expect(document.title).toBe('Count 2')
+      })
+    })
+
+    it('writes only a title that differs from document.title', async () => {
+      const writes = mockDocument('Static')
+      await running(counter((model) => (model.count < 5 ? 'Few' : 'Many')), (prog) => {
+        prog.dispatch('increment')
+        prog.dispatch('nothing')
+        prog.dispatch('increment')
+      })
+      expect(writes).toEqual(['Few'])
+    })
+
+    it('a title changed from outside is written again on the next update', async () => {
+      mockDocument('Static')
+      await running(counter(() => 'Mine'), (prog) => {
+        document.title = 'Theirs'
+        prog.dispatch('increment')
+        expect(document.title).toBe('Mine')
+      })
+    })
+
+    it('without title it never touches document.title', async () => {
+      const writes = mockDocument('Static')
+      await running(counter(), (prog) => {
+        prog.dispatch('increment')
+      })
+      expect(writes).toEqual([])
+      expect(document.title).toBe('Static')
+    })
+
+    it('stops writing once the program is closed', async () => {
+      const writes = mockDocument('Static')
+      let closed: Platform.Program<Model, Msg> | undefined
+      await running(counter(count), (prog) => {
+        closed = prog
+      })
+      closed!.dispatch('increment')
+      expect(writes).toEqual(['Count 0'])
+    })
+
+    it('without a document the program runs and writes nothing', async () => {
+      const seen: Array<number> = []
+      await running(counter(count), (prog) => {
+        prog.subscribe((model) => seen.push(model.count))
+        prog.dispatch('increment')
+      })
+      expect(seen).toEqual([0, 1])
+    })
+  })
 })
