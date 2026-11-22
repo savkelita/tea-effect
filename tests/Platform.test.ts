@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { Effect, Stream, Exit, Scope, Schedule } from 'effect'
+import { Effect, Stream, Exit, Scope, Schedule, Cause, Fiber } from 'effect'
 import * as Platform from '../src/Platform'
 import * as Cmd from '../src/Cmd'
 import * as Http from '../src/Http'
 import * as Sub from '../src/Sub'
+import { Run, RunEnd, RunMsg, runToEnd } from '../src/internal/latest'
 
 describe('Platform', () => {
   type Model = { count: number }
@@ -360,6 +361,51 @@ describe('Platform', () => {
       })
 
     const runTest = (test: Effect.Effect<void, never, Scope.Scope>) => Effect.runPromise(Effect.scoped(test))
+
+    describe('the end of a run', () => {
+      // What a run put in the queue: its messages, and 'end' for its end.
+      const queued = () => {
+        const items: Array<string> = []
+        const offer = (item: RunMsg<string> | RunEnd) =>
+          Effect.sync(() => void items.push(item instanceof RunEnd ? 'end' : item.msg))
+        return { items, offer }
+      }
+
+      it('comes after the last message of a command that completes', async () => {
+        const { items, offer } = queued()
+        const exit = await Effect.runPromise(Effect.exit(runToEnd(new Run('k'), Stream.make('a', 'b'), offer)))
+        expect(Exit.isSuccess(exit)).toBe(true)
+        expect(items).toEqual(['a', 'b', 'end'])
+      })
+
+      it('comes when the command fails, and the failure still goes on', async () => {
+        const { items, offer } = queued()
+        const failing = Stream.concat(Stream.make('a'), Stream.fail('boom'))
+        const exit = await Effect.runPromise(Effect.exit(runToEnd(new Run('k'), failing, offer)))
+        expect(Exit.isFailure(exit)).toBe(true)
+        expect(items).toEqual(['a', 'end'])
+      })
+
+      it('comes when the command interrupts itself', async () => {
+        const { items, offer } = queued()
+        const interrupting = Stream.concat(Stream.make('a'), Stream.fromEffect(Effect.interrupt))
+        const exit = await Effect.runPromise(Effect.exit(runToEnd(new Run('k'), interrupting, offer)))
+        expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true)
+        expect(items).toEqual(['a', 'end'])
+      })
+
+      it('comes when the run is interrupted from outside, as a replaced run is', async () => {
+        const { items, offer } = queued()
+        await Effect.runPromise(
+          Effect.gen(function* () {
+            const fiber = yield* Effect.forkChild(runToEnd(new Run('k'), Stream.concat(Stream.make('a'), Stream.never), offer))
+            yield* Effect.sleep(10)
+            yield* Fiber.interrupt(fiber)
+          })
+        )
+        expect(items).toEqual(['a', 'end'])
+      })
+    })
 
     it('delivers only the latest command under a key and interrupts the earlier one', () =>
       runTest(
