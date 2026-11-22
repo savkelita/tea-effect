@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { Effect, Stream, Exit, Scope, Schedule, Cause, Fiber } from 'effect'
+import { Effect, Stream, Exit, Scope, Schedule, Cause, Fiber, Deferred } from 'effect'
 import * as Platform from '../src/Platform'
 import * as Cmd from '../src/Cmd'
 import * as Http from '../src/Http'
@@ -398,8 +398,14 @@ describe('Platform', () => {
         const { items, offer } = queued()
         await Effect.runPromise(
           Effect.gen(function* () {
-            const fiber = yield* Effect.forkChild(runToEnd(new Run('k'), Stream.concat(Stream.make('a'), Stream.never), offer))
-            yield* Effect.sleep(10)
+            // Completed once the first message is recorded, so the interruption comes right after it.
+            const firstMessage = yield* Deferred.make<void>()
+            const signalling = (item: RunMsg<string> | RunEnd) =>
+              Effect.andThen(offer(item), Deferred.succeed(firstMessage, undefined))
+            const fiber = yield* Effect.forkChild(
+              runToEnd(new Run('k'), Stream.concat(Stream.make('a'), Stream.never), signalling)
+            )
+            yield* Deferred.await(firstMessage)
             yield* Fiber.interrupt(fiber)
           })
         )
